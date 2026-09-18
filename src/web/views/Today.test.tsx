@@ -711,6 +711,103 @@ describe('Today view', () => {
   });
 });
 
+describe('Today view — reported spend on the budget meter', () => {
+  function makeBudget(daily: {
+    readonly budgetUsd: number | null;
+    readonly spentUsd: number;
+    readonly pctUsed: number | null;
+    readonly exceeded: boolean;
+  }) {
+    return {
+      session: { budgetUsd: null, spentUsd: 0, pctUsed: null, exceeded: false },
+      daily,
+      weekly: { budgetUsd: null, spentUsd: 0, pctUsed: null, exceeded: false },
+      alerts: [],
+    };
+  }
+
+  function stubTodayApis(opts: {
+    readonly daily: {
+      readonly budgetUsd: number | null;
+      readonly spentUsd: number;
+      readonly pctUsed: number | null;
+      readonly exceeded: boolean;
+    };
+    readonly reportedSpend: {
+      readonly periodKind: 'daily' | 'weekly';
+      readonly amountUsd: number;
+      readonly asOf: string;
+    } | null;
+  }): void {
+    const budget = makeBudget(opts.daily);
+    const settings = { reportedSpend: opts.reportedSpend };
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url === '/api/budget') {
+        return new Response(JSON.stringify(budget), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url === '/api/settings') {
+        return new Response(JSON.stringify(settings), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+  }
+
+  beforeEach(() => {
+    resetStore();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('shows a reported bar with the as-of time when a daily value is saved', async () => {
+    stubTodayApis({
+      daily: { budgetUsd: 10, spentUsd: 4, pctUsed: 40, exceeded: false },
+      reportedSpend: {
+        periodKind: 'daily',
+        amountUsd: 12.5,
+        asOf: new Date(2026, 8, 18, 15, 42, 0).toISOString(),
+      },
+    });
+    renderToday();
+    expect(await screen.findByText('reported')).toBeInTheDocument();
+    expect(screen.getByText('$12.50')).toBeInTheDocument();
+    expect(screen.getByText(/as of/i)).toBeInTheDocument();
+  });
+
+  it('hides the reported bar when the value has been cleared', async () => {
+    stubTodayApis({
+      daily: { budgetUsd: 10, spentUsd: 4, pctUsed: 40, exceeded: false },
+      reportedSpend: null,
+    });
+    renderToday();
+    expect(await screen.findByText('estimate')).toBeInTheDocument();
+    expect(screen.queryByText('reported')).toBeNull();
+  });
+
+  it('labels a previous-period daily value as stale', async () => {
+    stubTodayApis({
+      daily: { budgetUsd: 10, spentUsd: 4, pctUsed: 40, exceeded: false },
+      reportedSpend: {
+        periodKind: 'daily',
+        amountUsd: 9,
+        asOf: new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString(),
+      },
+    });
+    renderToday();
+    expect(await screen.findByText('reported · stale')).toBeInTheDocument();
+  });
+});
+
 describe('Today view — empty state', () => {
   beforeEach(() => {
     useLiveStore.setState({

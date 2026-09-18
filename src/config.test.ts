@@ -1010,6 +1010,24 @@ describe('budget fields', () => {
     expect(config.dailyBudgetUsd).toBe(20);
   });
 
+  it('does not warn about reportedSpend and does not load it onto McpServerConfig', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({
+      dailyBudgetUsd: 20,
+      reportedSpend: {
+        periodKind: 'daily',
+        amountUsd: 50,
+        asOf: '2026-09-18T15:42:00.000Z',
+      },
+    });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dailyBudgetUsd).toBe(20);
+    expect(config).not.toHaveProperty('reportedSpend');
+    const stderrOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(stderrOutput).not.toMatch(/Unknown keys in config file/);
+  });
+
   it('env var overrides config file for budget fields', () => {
     process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
     process.env.NEW_RELIC_ACCOUNT_ID = '12345';

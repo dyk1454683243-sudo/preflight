@@ -1331,6 +1331,8 @@ async function main(): Promise<void> {
     });
     const repoNameResolver = new RepoNameResolver();
 
+    // reportedSpend is a settings-only figure for the dashboard meter. It is
+    // intentionally omitted here — budget alerts stay on the local estimate.
     const budgetTracker = new BudgetTracker({
       sessionBudgetUsd: config.sessionBudgetUsd,
       dailyBudgetUsd: config.dailyBudgetUsd,

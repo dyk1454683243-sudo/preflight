@@ -13,6 +13,7 @@ import {
   todayPortionOfSessionCost,
   todayPortionRatio,
 } from '../../lib/date.js';
+import { parseReportedSpend, parseReportedSpendPatch } from '../../lib/reported-spend.js';
 import type { AntiPattern } from '../../metrics/anti-patterns.js';
 import { AntiPatternDetector } from '../../metrics/anti-patterns.js';
 import type { ApiFailureMetrics } from '../../metrics/api-failure-tracker.js';
@@ -2909,6 +2910,7 @@ export function createApiHandler(
         'dailyBudgetUsd' in disk ? (disk.dailyBudgetUsd as number | null) : c.dailyBudgetUsd,
       weeklyBudgetUsd:
         'weeklyBudgetUsd' in disk ? (disk.weeklyBudgetUsd as number | null) : c.weeklyBudgetUsd,
+      reportedSpend: parseReportedSpend(disk.reportedSpend),
       retainSessionsDays:
         'retainSessionsDays' in disk
           ? (disk.retainSessionsDays as number | null)
@@ -3019,6 +3021,22 @@ export function createApiHandler(
       } else {
         existing.weeklyBudgetUsd = body.weeklyBudgetUsd;
         digestUrlOnly = false;
+      }
+    }
+    if ('reportedSpend' in body) {
+      // Settings-only figure for the dashboard meter. Does not restart the
+      // server and is never forwarded to BudgetTracker.
+      const parsed = parseReportedSpendPatch(body.reportedSpend);
+      if (parsed.kind === 'invalid') {
+        errors.push(parsed.error);
+      } else if (parsed.kind === 'clear') {
+        delete existing.reportedSpend;
+      } else {
+        existing.reportedSpend = {
+          periodKind: parsed.value.periodKind,
+          amountUsd: parsed.value.amountUsd,
+          asOf: new Date().toISOString(),
+        };
       }
     }
     if ('retainSessionsDays' in body) {

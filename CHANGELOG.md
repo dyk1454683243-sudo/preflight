@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Settings now accept a manually entered org-reported spend (today or this week). The Today budget meter draws that figure as a second bar beside Preflight's estimate, with the as-of time. A value from a previous period stays visible and is labelled stale. The local estimate and its budget alerts are unchanged.
 - Share tables in "What's contributing to your spend" now break each row's tokens down by category on hover: input, output, cache read, and cache write, on both the Tokens and Cost cells of the Skills, Subagents, and Plugins tables. Session records persist the same breakdown per skill, subagent type, and tool, and cache-write tokens now count toward every table's token total, so skills and subagents are measured the same way.
 
 ## [1.55.3] - 2026-09-17

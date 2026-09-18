@@ -1241,12 +1241,26 @@ export const fetchContextComposition = (
 export const fetchContextEfficiency = (signal?: AbortSignal): Promise<ContextEfficiencyResponse> =>
   getJson<ContextEfficiencyResponse>('/api/context-efficiency', signal);
 
+export type ReportedSpendPeriodKind = 'daily' | 'weekly';
+
+export interface ReportedSpend {
+  readonly periodKind: ReportedSpendPeriodKind;
+  readonly amountUsd: number;
+  readonly asOf: string;
+}
+
+export interface ReportedSpendInput {
+  readonly periodKind: ReportedSpendPeriodKind;
+  readonly amountUsd: number;
+}
+
 export interface SettingsPatch {
   developer?: string;
   teamId?: string | null;
   sessionBudgetUsd?: number | null;
   dailyBudgetUsd?: number | null;
   weeklyBudgetUsd?: number | null;
+  reportedSpend?: ReportedSpendInput | null;
   retainSessionsDays?: number | null;
   digestWebhookUrl?: string | null;
   digestSchedule?: string;
@@ -1303,6 +1317,7 @@ export interface SettingsResponse {
   readonly sessionBudgetUsd: number | null;
   readonly dailyBudgetUsd: number | null;
   readonly weeklyBudgetUsd: number | null;
+  readonly reportedSpend: ReportedSpend | null;
   readonly retainSessionsDays: number | null;
   readonly digestWebhookUrl: string | null;
   readonly digestSchedule: string;

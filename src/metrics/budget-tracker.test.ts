@@ -219,6 +219,27 @@ describe('BudgetTracker', () => {
     expect(t.getStatus().session.pctUsed).toBeNull();
   });
 
+  it('does not apply an org-reported figure — alerts stay on the local estimate', () => {
+    const events: unknown[] = [];
+    const t = new BudgetTracker({
+      sessionBudgetUsd: null,
+      dailyBudgetUsd: 10,
+      weeklyBudgetUsd: null,
+      onThreshold: (e) => events.push(e),
+    });
+    // A $50 org-reported figure sitting in settings must not become spentUsd
+    // or trip a threshold. BudgetTracker only accepts the local estimate.
+    const reportedSpendUsd = 50;
+    t.updateCost(0, 4, 0);
+    const daily = t.getStatus().daily;
+    expect(daily.spentUsd).toBe(4);
+    expect(daily.spentUsd).not.toBe(reportedSpendUsd);
+    expect(daily.pctUsed).toBe(40);
+    expect(daily.exceeded).toBe(false);
+    expect(events).toHaveLength(0);
+    expect(t.getStatus()).not.toHaveProperty('reportedSpend');
+  });
+
   it('seedFiredThresholdsFromSessionTotal below every threshold marks nothing as fired', () => {
     const events: unknown[] = [];
     const t = new BudgetTracker({

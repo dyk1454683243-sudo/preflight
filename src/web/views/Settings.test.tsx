@@ -16,6 +16,7 @@ vi.mock('../api/client', () => ({
     sessionBudgetUsd: null,
     dailyBudgetUsd: null,
     weeklyBudgetUsd: null,
+    reportedSpend: null,
     retainSessionsDays: null,
   })),
   fetchDiagnostics: vi.fn(async () => []),
@@ -146,5 +147,87 @@ describe('Identity & Account save flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save identity' }));
 
     expect(await screen.findByText(/disk full/)).toBeInTheDocument();
+  });
+});
+
+describe('Reported spend field', () => {
+  const baseSettings = {
+    developer: 'dev',
+    teamId: null,
+    accountId: null,
+    appName: 'preflight',
+    mode: 'local',
+    storagePath: '~/.newrelic-preflight',
+    highSecurity: false,
+    licenseKey: null,
+    sessionBudgetUsd: null,
+    dailyBudgetUsd: null,
+    weeklyBudgetUsd: null,
+    reportedSpend: null as {
+      readonly periodKind: 'daily' | 'weekly';
+      readonly amountUsd: number;
+      readonly asOf: string;
+    } | null,
+    retainSessionsDays: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(client.fetchSettings).mockResolvedValue({ ...baseSettings });
+    vi.mocked(client.patchSettings).mockResolvedValue({ ok: true, restartRequired: false });
+  });
+
+  it('renders the reported spend field next to the budget inputs', async () => {
+    wrap(<Settings />);
+    expect(await screen.findByLabelText('Reported spend today')).toBeInTheDocument();
+    expect(screen.getByLabelText('Reported spend period')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+  });
+
+  it('saves an entered value and shows the as-of time after refetch', async () => {
+    const asOf = new Date(2026, 8, 18, 15, 42, 0).toISOString();
+    vi.mocked(client.fetchSettings)
+      .mockResolvedValueOnce({ ...baseSettings })
+      .mockResolvedValue({
+        ...baseSettings,
+        reportedSpend: { periodKind: 'daily', amountUsd: 12.5, asOf },
+      });
+
+    wrap(<Settings />);
+    const amount = await screen.findByLabelText('Reported spend today');
+    fireEvent.change(amount, { target: { value: '12.5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save budgets' }));
+
+    await waitFor(() =>
+      expect(client.patchSettings).toHaveBeenCalledWith({
+        reportedSpend: { periodKind: 'daily', amountUsd: 12.5 },
+      }),
+    );
+    expect(await screen.findByText(/as of/i)).toBeInTheDocument();
+    expect(screen.getByText('Saved.')).toBeInTheDocument();
+  });
+
+  it('clears the stored value and hides the as-of time', async () => {
+    const asOf = new Date(2026, 8, 18, 15, 42, 0).toISOString();
+    vi.mocked(client.fetchSettings)
+      .mockResolvedValueOnce({
+        ...baseSettings,
+        reportedSpend: { periodKind: 'daily', amountUsd: 12.5, asOf },
+      })
+      .mockResolvedValue({ ...baseSettings, reportedSpend: null });
+
+    wrap(<Settings />);
+    expect(await screen.findByText(/as of/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+
+    await waitFor(() => expect(client.patchSettings).toHaveBeenCalledWith({ reportedSpend: null }));
+    await waitFor(() => expect(screen.queryByText(/as of/i)).toBeNull());
+  });
+
+  it('relabels the field when the period is this week', async () => {
+    wrap(<Settings />);
+    const period = await screen.findByLabelText('Reported spend period');
+    fireEvent.change(period, { target: { value: 'weekly' } });
+    expect(screen.getByLabelText('Reported spend this week')).toBeInTheDocument();
   });
 });

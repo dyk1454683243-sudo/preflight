@@ -191,6 +191,16 @@ export const ConfigFileSchema = z
     sessionBudgetUsd: z.number().nullable().optional(),
     dailyBudgetUsd: z.number().nullable().optional(),
     weeklyBudgetUsd: z.number().nullable().optional(),
+    // Settings-only: org-reported spend shown beside the estimate on the
+    // budget meter. Not loaded into McpServerConfig / BudgetTracker.
+    reportedSpend: z
+      .object({
+        periodKind: z.enum(['daily', 'weekly']),
+        amountUsd: z.number(),
+        asOf: z.string().optional(),
+      })
+      .nullable()
+      .optional(),
     port: z.number().optional(),
     logLevel: z.enum(['debug', 'info', 'warn', 'error']).optional(),
     collectorHost: z.string().nullable().optional(),
