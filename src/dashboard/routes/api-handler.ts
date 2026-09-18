@@ -50,6 +50,7 @@ import {
 } from '../../metrics/quality-proxy-tracker.js';
 import type { Recommendation } from '../../metrics/recommendation-engine.js';
 import type { RetryDetectorMetrics, RetrySessionBreakdown } from '../../metrics/retry-detector.js';
+import type { TaskCompletionMetrics } from '../../metrics/task-completion-tracker.js';
 import type {
   ToolSelectionMetrics,
   ToolSelectionSummary,
@@ -548,6 +549,7 @@ export interface ApiHandlerDeps {
     getCompletedTasks: () => readonly { toolCalls: readonly ToolCallRecord[] }[];
     getCurrentTask: () => { toolCalls: readonly ToolCallRecord[] } | null;
   };
+  readonly taskCompletionTracker?: { getMetrics: () => TaskCompletionMetrics };
   // Minimal interface — we only need the rolling session-average score for the
   // Today KPI; richer per-task breakdowns ship via the existing MCP tool path.
   readonly efficiencyScorer?: { getSessionAverage: () => { score: number } | null };
@@ -2035,6 +2037,13 @@ export function createApiHandler(
   routes.set('GET /api/api-failures', (_req, res) => {
     if (!deps.apiFailureTracker) return unavailable(res, 'apiFailureTracker');
     jsonOk(res, deps.apiFailureTracker.getMetrics());
+  });
+
+  // Same TaskCompletionMetrics snapshot as nr_observe_get_task_completion_rate
+  // — current-session completed count, average duration, average tool calls.
+  routes.set('GET /api/task-completion', (_req, res) => {
+    if (!deps.taskCompletionTracker) return unavailable(res, 'taskCompletionTracker');
+    jsonOk(res, deps.taskCompletionTracker.getMetrics());
   });
 
   routes.set('GET /api/instruction-drift', (_req, res) => {

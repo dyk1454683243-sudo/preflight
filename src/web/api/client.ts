@@ -367,6 +367,18 @@ export interface ComputeWasteResponse {
 export const fetchComputeWaste = (signal?: AbortSignal): Promise<ComputeWasteResponse> =>
   getJson<ComputeWasteResponse>('/api/compute-waste', signal);
 
+// Mirrors TaskCompletionMetrics from src/metrics/task-completion-tracker.ts
+// (not importable — tsconfig.web.json excludes server source). Same snapshot
+// as nr_observe_get_task_completion_rate / GET /api/task-completion.
+export interface TaskCompletionMetrics {
+  readonly completedTasks: number;
+  readonly avgTaskDurationMs: number | null;
+  readonly avgToolCallsPerTask: number | null;
+}
+
+export const fetchTaskCompletion = (signal?: AbortSignal): Promise<TaskCompletionMetrics> =>
+  getJson<TaskCompletionMetrics>('/api/task-completion', signal);
+
 export interface DecisionBranchEntry {
   readonly turnNumber: number;
   readonly timestamp: number;
@@ -1555,6 +1567,7 @@ export const qk = {
   cost: ['cost'] as const,
   antiPatterns: ['anti-patterns'] as const,
   computeWaste: ['compute-waste'] as const,
+  taskCompletion: ['task-completion'] as const,
   audit: ['audit'] as const,
   weekly: ['weekly'] as const,
   budget: ['budget'] as const,

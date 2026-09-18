@@ -34,6 +34,8 @@ import {
   fetchCacheHealth,
   fetchCost,
   fetchCostPerTool,
+  fetchTaskCompletion,
+  type TaskCompletionMetrics,
   fetchSessionCurrent,
   fetchSessionsList,
   fetchSessionReplay,
@@ -75,6 +77,7 @@ import {
 } from '../api/client';
 import {
   fmtTimeOfDay,
+  formatDuration,
   formatMs,
   formatNumber,
   formatPct,
@@ -500,7 +503,11 @@ export function Today(): JSX.Element {
             )}
           </AnimatedCard>
 
-          <AnimatedCard index={1} className="grid grid-cols-3 gap-3 mb-3 items-start">
+          <AnimatedCard index={1} className="mb-3">
+            <TasksRow />
+          </AnimatedCard>
+
+          <AnimatedCard index={2} className="grid grid-cols-3 gap-3 mb-3 items-start">
             <div className="col-span-2">
               <SpendTodayPanel
                 hourlySpend={hourlySpend}
@@ -511,7 +518,7 @@ export function Today(): JSX.Element {
             <ActivityTodayPanel todayHeatmap={todayHeatmap} concurrency={concurrency} />
           </AnimatedCard>
 
-          <AnimatedCard index={2} className="mb-3">
+          <AnimatedCard index={3} className="mb-3">
             <NeedsAttentionPanel
               antiPatterns={antiPatterns}
               apiAntiPatterns={apiAntiPatterns}
@@ -520,15 +527,15 @@ export function Today(): JSX.Element {
             />
           </AnimatedCard>
 
-          <AnimatedCard index={3} className="mb-3">
+          <AnimatedCard index={4} className="mb-3">
             <SpendBreakdownPanel todaySessions={todaySessions ?? []} />
           </AnimatedCard>
 
-          <AnimatedCard index={4}>
+          <AnimatedCard index={5}>
             <LiveSessionPane sessions={todaySessions ?? []} liveSessions={liveSessions ?? []} />
           </AnimatedCard>
 
-          <AnimatedCard index={5} className="grid grid-cols-3 gap-3 mb-3">
+          <AnimatedCard index={6} className="grid grid-cols-3 gap-3 mb-3">
             <CacheHealthCard aggregate={aggregate} />
             <ToolSelectionCard />
             <QualityCard />
@@ -539,6 +546,59 @@ export function Today(): JSX.Element {
         </>
       )}
     </section>
+  );
+}
+
+// --- Tasks row ---
+
+function isTaskCompletionMetrics(value: unknown): value is TaskCompletionMetrics {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    typeof (value as TaskCompletionMetrics).completedTasks === 'number'
+  );
+}
+
+function TasksRow(): JSX.Element {
+  const { data } = useQuery<TaskCompletionMetrics>({
+    queryKey: qk.taskCompletion,
+    queryFn: ({ signal }) => fetchTaskCompletion(signal),
+    refetchInterval: QUALITY_REFETCH_MS,
+  });
+
+  const metrics = isTaskCompletionMetrics(data) ? data : null;
+  const completed = metrics?.completedTasks ?? 0;
+
+  return (
+    <Panel
+      title="Tasks"
+      tooltip="Completed tasks in the current session — average duration and tool calls per task."
+    >
+      {metrics === null || completed === 0 ? (
+        <EmptyState
+          variant="inline"
+          title="No completed tasks yet"
+          subtitle="Appears once a coding task finishes."
+        />
+      ) : (
+        <div className="grid grid-cols-3 gap-4">
+          <Kpi label="completed tasks" value={String(completed)} animate numericValue={completed} />
+          <Kpi
+            label="avg duration"
+            value={
+              metrics.avgTaskDurationMs != null ? formatDuration(metrics.avgTaskDurationMs) : '—'
+            }
+          />
+          <Kpi
+            label="avg tool calls / task"
+            value={
+              metrics.avgToolCallsPerTask != null ? formatNumber(metrics.avgToolCallsPerTask) : '—'
+            }
+          />
+        </div>
+      )}
+    </Panel>
   );
 }
 

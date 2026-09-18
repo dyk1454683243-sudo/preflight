@@ -18,6 +18,9 @@ import {
 import { ModelUsageTracker } from '../../metrics/model-usage-tracker.js';
 import { makeUsage } from '../../__test-utils__/token-usage.js';
 import { QualityProxyTracker } from '../../metrics/quality-proxy-tracker.js';
+import { TaskCompletionTracker } from '../../metrics/task-completion-tracker.js';
+import { seedTaskCompletionTracker } from '../../__test-utils__/task-completion.js';
+import { handleGetTaskCompletionRate } from '../../tools/analytics-tools.js';
 import { localStartOfDay, localDateKey } from '../../lib/date.js';
 
 import type { ToolCallRecord } from '../../storage/types.js';
@@ -1663,6 +1666,57 @@ describe('api-handler GET /api/compute-waste', () => {
     const json = JSON.parse(body()) as Record<string, unknown>;
     expect(json.total_tokens_wasted).toBe(600);
     expect(json.status).toBe('moderate');
+  });
+});
+
+describe('api-handler GET /api/task-completion', () => {
+  it('returns the same numbers as the MCP tool for the same tracker state', async () => {
+    const tracker = seedTaskCompletionTracker();
+    const mcp = JSON.parse(handleGetTaskCompletionRate(tracker).content[0].text) as Record<
+      string,
+      unknown
+    >;
+
+    const handler = createApiHandler({
+      taskCompletionTracker: tracker,
+    });
+    const req = { method: 'GET', url: '/api/task-completion' } as IncomingMessage;
+    const { res, status, body, headers } = fakeRes();
+    await handler(req, res);
+
+    expect(status()).toBe(200);
+    expect(headers()['content-type']).toMatch(/application\/json/);
+    const route = JSON.parse(body()) as Record<string, unknown>;
+    expect(route).toEqual(mcp);
+    expect(route).toEqual({
+      completedTasks: 2,
+      avgTaskDurationMs: 45_000,
+      avgToolCallsPerTask: 8,
+    });
+  });
+
+  it('returns the empty snapshot when no tasks have completed', async () => {
+    const handler = createApiHandler({
+      taskCompletionTracker: new TaskCompletionTracker(),
+    });
+    const req = { method: 'GET', url: '/api/task-completion' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    expect(JSON.parse(body())).toEqual({
+      completedTasks: 0,
+      avgTaskDurationMs: null,
+      avgToolCallsPerTask: null,
+    });
+  });
+
+  it('returns 503 when taskCompletionTracker is missing', async () => {
+    const handler = createApiHandler({});
+    const req = { method: 'GET', url: '/api/task-completion' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(503);
+    expect(JSON.parse(body())).toEqual({ error: 'unavailable', what: 'taskCompletionTracker' });
   });
 });
 
