@@ -250,8 +250,12 @@ describe('WorkflowWatcher', () => {
     watcher.setOnRun((r) => runs.push(r));
     watcher.poll();
     expect(runs).toHaveLength(0);
-    // Now write the full file and re-poll
+    // Now write the full file and re-poll. Bump mtime so the second poll
+    // cannot collapse into the first on filesystems whose timestamp
+    // resolution is 1s (the watcher skips unchanged mtime).
     writeFileSync(path, makeWfJson());
+    const later = Date.now() + 1000;
+    utimesSync(path, later / 1000, later / 1000);
     watcher.poll();
     expect(runs).toHaveLength(1);
   });
