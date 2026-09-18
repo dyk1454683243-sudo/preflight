@@ -1,7 +1,10 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+
+import type { AlertEvent } from '../dashboard/live-event-bus.js';
+import { BudgetTracker } from '../metrics/budget-tracker.js';
+import { AlertSnapshotCollector } from './alert-snapshot-collector.js';
 import { LocalAlertEngine, type AlertSnapshot } from './local-alert-engine.js';
 import type { LocalAlertRule } from './local-alert-rule.js';
-import type { AlertEvent } from '../dashboard/live-event-bus.js';
 import type { OsNotifier } from './os-notifier.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
@@ -528,6 +531,44 @@ describe('LocalAlertEngine — cost.window rule', () => {
       1700000000000,
     );
     expect(events).toHaveLength(1);
+    expect(events[0]!.value).toBe(25);
+  });
+
+  it('fires costPeriod today when budgetTracker daily.spentUsd crosses the threshold', () => {
+    // Collector + real BudgetTracker, not a hand-built snapshot. Removing
+    // the budgetTracker dep from AlertSnapshotCollector.readCost() leaves
+    // todayUsd at 0 and this test fails.
+    const budgetTracker = new BudgetTracker({
+      sessionBudgetUsd: null,
+      dailyBudgetUsd: 100,
+      weeklyBudgetUsd: null,
+    });
+    budgetTracker.updateCost(1, 25, 40);
+    const collector = new AlertSnapshotCollector({
+      costTracker: { getMetrics: () => ({ sessionTotalCostUsd: 1 }) },
+      budgetTracker,
+    });
+    const engine = new LocalAlertEngine();
+    const rule: LocalAlertRule = {
+      id: 'today-cost-from-budget',
+      name: 'Today cost > $20',
+      type: 'cost.window',
+      severity: 'critical',
+      enabled: true,
+      threshold: 20,
+      operator: 'above',
+      deduplicateSeconds: 0,
+      windowSeconds: 3600,
+      costPeriod: 'today',
+      channels: ['banner'],
+    };
+    engine.loadRules([rule]);
+
+    const t0 = 1700000000000;
+    const events = engine.evaluate(collector.snapshot(t0, []), t0);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.state).toBe('firing');
+    expect(events[0]!.id).toBe('today-cost-from-budget');
     expect(events[0]!.value).toBe(25);
   });
 });

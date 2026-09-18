@@ -19,8 +19,9 @@ const logger = createLogger('alert-snapshot-collector');
  * - `toolFailures` is one entry per (tool, windowMs) tuple, same matching
  *   rule.
  *
- * Cost is currently session-cumulative (not a rolling window). A true
- * rolling-hour cost window is not yet implemented.
+ * Cost (`sessionUsd` / `todayUsd` / `weekUsd`) is period-cumulative —
+ * session, calendar-day, and calendar-week totals — not a rolling
+ * N-second window.
  */
 export interface AlertSnapshot {
   readonly timestamp: number;
