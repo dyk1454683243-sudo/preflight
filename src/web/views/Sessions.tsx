@@ -27,6 +27,7 @@ import {
 import { ContextBar } from '../components/ContextBar';
 import type { ContextResponse } from '../api/client';
 import type { AgentRow } from '../components/AgentTable';
+import { SessionCopyActions } from '../components/SessionCopyActions';
 import { Card, Eyebrow, LiveBadge, Pill, Tabs } from '../components/ui';
 import type { PillTone } from '../components/ui';
 import {
@@ -1028,19 +1029,29 @@ function SessionTimeline({
         )
       : null;
 
+  const copySession = {
+    ...data,
+    startTime: first > 0 ? first : undefined,
+  };
+
   if (entries.length === 0 && breakdownEntries.length === 0) {
     return (
-      <EmptyState
-        icon="timeline"
-        title="No tool calls"
-        subtitle="This session has no recorded tool calls."
-      />
+      <div>
+        <div className="mb-3">
+          <SessionCopyActions session={copySession} />
+        </div>
+        <EmptyState
+          icon="timeline"
+          title="No tool calls"
+          subtitle="This session has no recorded tool calls."
+        />
+      </div>
     );
   }
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-3">
+      <div className="flex items-baseline justify-between mb-3 gap-3">
         <div>
           <h2 className="text-xs tracking-wider text-ink-muted flex items-center gap-2">
             {/* Identifier in mono so it looks identical to the left-aside list.
@@ -1096,6 +1107,7 @@ function SessionTimeline({
             </div>
           )}
         </div>
+        <SessionCopyActions session={copySession} />
       </div>
 
       {modelTableRows.length > 0 ? (

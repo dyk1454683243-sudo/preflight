@@ -10,8 +10,10 @@ import type {
   ContextCompositionResponse,
   ContextEfficiencyResponse,
 } from '../api/client';
-import { Card, Eyebrow, Pill, type PillTone } from './ui';
 import { formatTokensCompact } from '../lib/format.js';
+import type { ExportableSession } from '../lib/session-export.js';
+import { SessionCopyActions } from './SessionCopyActions';
+import { Card, Eyebrow, Pill, type PillTone } from './ui';
 import { ContextTimeline } from './ContextBar';
 
 export interface SessionDetailDialogProps {
@@ -21,6 +23,10 @@ export interface SessionDetailDialogProps {
   readonly contextWindow?: number;
   readonly contextComposition?: ContextCompositionResponse;
   readonly contextEfficiency?: ContextEfficiencyResponse;
+  /** Summary of the selected session. Copy actions are hidden without it. */
+  readonly session?: ExportableSession;
+  /** Unique file-path count already derived by the caller (never raw paths). */
+  readonly uniqueFilesTouched?: number;
   readonly onClose: () => void;
 }
 
@@ -39,6 +45,8 @@ export function SessionDetailDialog({
   contextWindow,
   contextComposition,
   contextEfficiency,
+  session,
+  uniqueFilesTouched,
   onClose,
 }: SessionDetailDialogProps): JSX.Element {
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -105,6 +113,16 @@ export function SessionDetailDialog({
               Composition &amp; Efficiency remain live, current-process-only — they reflect this
               dashboard process&rsquo;s own current session, not necessarily the one selected above.
             </p>
+            {session && (
+              <div className="mt-2">
+                <SessionCopyActions
+                  session={session}
+                  decisionTree={decisionTree}
+                  turnCosts={turnCosts}
+                  uniqueFilesTouched={uniqueFilesTouched}
+                />
+              </div>
+            )}
           </div>
           <button
             ref={closeButtonRef}

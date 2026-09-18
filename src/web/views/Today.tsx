@@ -1444,6 +1444,13 @@ function LiveSessionPane({
   }, [replay?.timeline?.length, isLive]);
 
   const timeline = useMemo<ReplayTimelineEntry[]>(() => replay?.timeline ?? [], [replay]);
+  const uniqueFilesTouched = useMemo(() => {
+    const files = new Set<string>();
+    for (const entry of timeline) {
+      if (entry.filePath) files.add(entry.filePath);
+    }
+    return files.size;
+  }, [timeline]);
 
   // Subagents for the active session (defensive against an empty/array payload).
   const traceAgents = useMemo<AgentSpan[]>(
@@ -1667,6 +1674,11 @@ function LiveSessionPane({
           contextWindow={contextData?.contextWindow}
           contextComposition={contextComposition}
           contextEfficiency={contextEfficiency}
+          session={
+            todaySessions.find((s) => s.sessionId === activeId) ??
+            (activeId ? { sessionId: activeId } : undefined)
+          }
+          uniqueFilesTouched={uniqueFilesTouched}
           onClose={() => setShowDetail(false)}
         />
       )}
