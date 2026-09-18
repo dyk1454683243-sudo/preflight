@@ -9,6 +9,7 @@ import type { CliOptions } from './types.js';
 import type { UpstreamConfig } from './proxy/types.js';
 import type { PersonalAlertThresholds } from './alerts/types.js';
 import { DEFAULT_PERSONAL_THRESHOLDS } from './alerts/types.js';
+import { parseDigestSchedule } from './digest/cron.js';
 import { REDACTION_PATTERNS as DEFAULT_REDACTION_PATTERNS } from './redaction-patterns.js';
 import { resolveRecordContent } from './record-content-gate.js';
 import { validateTiers, DEFAULT_TIER_NAME, WILDCARD_EVENT_TYPE } from './transport/tier-types.js';
@@ -17,6 +18,8 @@ import type { ResolvedTier } from './transport/tier-types.js';
 const logger = createLogger('mcp-config');
 
 export const VALID_MODES = ['cloud', 'local', 'both'] as const;
+/** Monday 09:00 local — default `digestSchedule`. */
+export const DEFAULT_DIGEST_SCHEDULE = '0 9 * * 1';
 export type Mode = (typeof VALID_MODES)[number];
 
 export interface McpServerConfig {
@@ -79,7 +82,12 @@ export interface McpServerConfig {
    */
   readonly dataResidencyPremium: boolean;
   readonly digestWebhookUrl: string | null;
-  readonly digestSchedule: string; // cron expression, default: "0 9 * * 1" (Monday 9am)
+  /**
+   * 5-field cron expression (server local timezone). Default: Monday 09:00.
+   * Honored by the `--local` daemon's digest scheduler; rejected at config
+   * load and on settings PATCH if the expression is invalid.
+   */
+  readonly digestSchedule: string;
   /** Default: 90. `null` disables retention (only reachable via an explicit `null` in config.json). */
   readonly retainSessionsDays: number | null;
   readonly personalAlertThresholds: PersonalAlertThresholds;
@@ -1010,7 +1018,7 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
 
     digestSchedule:
       process.env.NEW_RELIC_AI_DIGEST_SCHEDULE ??
-      (typeof file.digestSchedule === 'string' ? file.digestSchedule : '0 9 * * 1'),
+      (typeof file.digestSchedule === 'string' ? file.digestSchedule : DEFAULT_DIGEST_SCHEDULE),
 
     retainSessionsDays: (() => {
       const raw = process.env.NEW_RELIC_AI_RETAIN_SESSIONS_DAYS;
@@ -1360,6 +1368,8 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       };
     })(),
   };
+
+  parseDigestSchedule(config.digestSchedule);
 
   if (config.homelabServerUrl && !config.homelabToken) {
     throw new Error(

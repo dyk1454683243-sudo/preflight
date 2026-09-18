@@ -1221,6 +1221,8 @@ describe('Cross-session tool handlers', () => {
       const written = JSON.parse(readFileSync(configFilePath, 'utf-8'));
       expect(written.digestWebhookUrl).toBe(webhookUrl);
       expect(written.developer).toBe('alice');
+      const body = JSON.parse(result.content[0]!.text) as { message: string };
+      expect(body.message).toMatch(/--local daemon delivers on digestSchedule/);
     });
   });
 

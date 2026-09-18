@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- A `--local` daemon now honors `digestSchedule` / `NEW_RELIC_AI_DIGEST_SCHEDULE`: a 5-field cron ticker POSTs the same weekly Slack digest `nr_observe_send_digest` produces. Invalid expressions fail config load and settings PATCH. `--stdio` does not schedule.
+
 ## [1.56.0] - 2026-09-17
 
 ### Added

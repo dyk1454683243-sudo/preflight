@@ -18,6 +18,7 @@ import { LiveEventBus } from './dashboard/index.js';
 import type { ObservabilityHealthSnapshot } from './dashboard/routes/api-handler.js';
 import { SubagentTimelineStore } from './dashboard/subagent-timeline-store.js';
 import { WorkflowStore } from './dashboard/workflow-store.js';
+import { DigestScheduler, resolveDigestSchedule } from './digest/digest-scheduler.js';
 import { isCopilotSdkExtensionMissing } from './hooks/copilot-sdk-extension-health.js';
 import { CopilotAppUsageWatcher } from './hooks/copilot-app-usage-watcher.js';
 import { CopilotUsageWatcher } from './hooks/copilot-usage-watcher.js';
@@ -111,6 +112,7 @@ import {
 } from './storage/session-store.js';
 import type { ToolCallRecord } from './storage/types.js';
 import { WeeklySummaryGenerator } from './storage/weekly-summary.js';
+import { handleSendDigest } from './tools/cross-session-tools.js';
 import type { ConfigSummary } from './tools/session-stats.js';
 import { registerPendingTools, registerTools } from './tools/session-stats.js';
 import { FeedbackCollector } from './tools/workflow-tools.js';
@@ -831,6 +833,7 @@ async function main(): Promise<void> {
   let proxyManager: ProxyManager | undefined;
   let sessionStore: SessionStore | undefined;
   let weeklySummaryGenerator: WeeklySummaryGenerator | undefined;
+  let digestScheduler: DigestScheduler | undefined;
   let persistSession: ((opts?: { periodic?: boolean }) => void) | undefined;
   let config: import('./config.js').McpServerConfig | undefined;
   let sessionTracker: SessionTracker | undefined;
@@ -935,6 +938,7 @@ async function main(): Promise<void> {
       if (branchDivergenceInterval) clearInterval(branchDivergenceInterval);
       if (dashboardRepollInterval) clearInterval(dashboardRepollInterval);
       if (sessionPersistInterval) clearInterval(sessionPersistInterval);
+      digestScheduler?.stop();
       if (pendingConfirmationCapTimer) clearTimeout(pendingConfirmationCapTimer);
       // Remove this MCP's heartbeat so the next dashboard-owner GC pass
       // doesn't have to mtime-archive our buffer file.
@@ -1595,10 +1599,24 @@ async function main(): Promise<void> {
       if (dayChanged || expired) refreshPriorCostBaseline();
     };
     refreshPriorCostBaseline();
-    weeklySummaryGenerator = new WeeklySummaryGenerator({
+    const weeklySummaries = new WeeklySummaryGenerator({
       storagePath: config.storagePath,
       sessionStore,
     });
+    weeklySummaryGenerator = weeklySummaries;
+
+    // Honor digestSchedule only in --local. A --stdio process is per-session
+    // and the wrong lifetime for a weekly cron; the scheduler re-reads the
+    // expression from disk/env each tick so a settings PATCH applies live.
+    if (options.local) {
+      const digestConfigFilePath = options.config ?? resolve(DEFAULT_STORAGE_PATH, 'config.json');
+      const fallbackSchedule = config.digestSchedule;
+      digestScheduler = new DigestScheduler({
+        getSchedule: () => resolveDigestSchedule(digestConfigFilePath, fallbackSchedule),
+        send: () => handleSendDigest(weeklySummaries, digestConfigFilePath),
+      });
+      digestScheduler.start();
+    }
 
     const trendAnalyzer = new TrendAnalyzer({ sessionStore });
     const collaborationProfiler = new CollaborationProfiler({ sessionStore });

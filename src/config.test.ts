@@ -61,6 +61,8 @@ beforeEach(() => {
   delete process.env.NEW_RELIC_AI_HOMELAB_TOKEN;
   delete process.env.NEW_RELIC_AI_HOMELAB_SERVER_PORT;
   delete process.env.NEW_RELIC_AI_HOMELAB_BIND_ADDRESS;
+  delete process.env.NEW_RELIC_AI_DIGEST_SCHEDULE;
+  delete process.env.NEW_RELIC_AI_DIGEST_WEBHOOK_URL;
 });
 
 afterEach(() => {
@@ -2377,6 +2379,40 @@ describe('homelab config fields', () => {
     const configPath = writeConfigFile({ mode: 'local' });
     const config = loadMcpConfig({ config: configPath });
     expect(config.homelabServer.bindAddress).toBe('192.168.1.100');
+  });
+
+  it('defaults digestSchedule to Monday 9am', () => {
+    const configPath = writeConfigFile({ mode: 'local' });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.digestSchedule).toBe('0 9 * * 1');
+  });
+
+  it('reads digestSchedule from the config file', () => {
+    const configPath = writeConfigFile({ mode: 'local', digestSchedule: '30 8 * * 2' });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.digestSchedule).toBe('30 8 * * 2');
+  });
+
+  it('prefers NEW_RELIC_AI_DIGEST_SCHEDULE over the config file', () => {
+    process.env.NEW_RELIC_AI_DIGEST_SCHEDULE = '15 7 * * 5';
+    const configPath = writeConfigFile({ mode: 'local', digestSchedule: '30 8 * * 2' });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.digestSchedule).toBe('15 7 * * 5');
+  });
+
+  it('throws when digestSchedule is not a 5-field cron expression', () => {
+    const configPath = writeConfigFile({ mode: 'local', digestSchedule: 'every monday' });
+    expect(() => loadMcpConfig({ config: configPath })).toThrow(
+      /Invalid digestSchedule 'every monday'/,
+    );
+  });
+
+  it('throws when NEW_RELIC_AI_DIGEST_SCHEDULE is invalid', () => {
+    process.env.NEW_RELIC_AI_DIGEST_SCHEDULE = '60 9 * * 1';
+    const configPath = writeConfigFile({ mode: 'local' });
+    expect(() => loadMcpConfig({ config: configPath })).toThrow(
+      /Invalid digestSchedule '60 9 \* \* 1'/,
+    );
   });
 });
 

@@ -58,6 +58,13 @@ const BASE_SETTINGS = {
 };
 
 describe('Alerts view', () => {
+  it('describes Slack digest schedule as honored by the --local daemon', async () => {
+    renderAlerts(BASE_SETTINGS);
+    await waitFor(() => expect(screen.getByText(/Slack Digest/)).toBeInTheDocument());
+    expect(screen.getByText(/--local daemon delivers on the cron schedule/)).toBeInTheDocument();
+    expect(screen.queryByText(/restart req/i)).toBeNull();
+  });
+
   it('does not claim these thresholds feed a local alert engine or need a server restart', async () => {
     renderAlerts(BASE_SETTINGS);
     await waitFor(() => expect(screen.getByText(/Alert Thresholds/)).toBeInTheDocument());
