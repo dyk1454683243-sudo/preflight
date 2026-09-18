@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Today, aggregateAttentionFlags, bucketByHour, buildSpendTodaySeries } from './Today';
+import {
+  Today,
+  aggregateAttentionFlags,
+  bucketByHour,
+  buildSpendTodaySeries,
+  dailyBudgetKpiTone,
+} from './Today';
 import { useLiveStore } from '../store/liveStore';
 import { qk } from '../api/client';
 import { localStartOfDay } from '../../lib/date.js';
@@ -708,6 +714,85 @@ describe('Today view', () => {
     renderToday();
 
     await waitFor(() => expect(screen.getByText(/^→ \$12\.00 by end of day/)).toBeInTheDocument());
+  });
+});
+
+describe('Today view — daily budget meter', () => {
+  function makeBudget(daily: {
+    readonly budgetUsd: number | null;
+    readonly spentUsd: number;
+    readonly pctUsed: number | null;
+    readonly exceeded: boolean;
+  }) {
+    return {
+      session: { budgetUsd: null, spentUsd: 0, pctUsed: null, exceeded: false },
+      daily,
+      weekly: { budgetUsd: null, spentUsd: 0, pctUsed: null, exceeded: false },
+      alerts: [],
+    };
+  }
+
+  function stubBudget(daily: {
+    readonly budgetUsd: number | null;
+    readonly spentUsd: number;
+    readonly pctUsed: number | null;
+    readonly exceeded: boolean;
+  }): void {
+    const payload = makeBudget(daily);
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url === '/api/budget') {
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+  }
+
+  beforeEach(() => {
+    resetStore();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('leaves the KPI strip unchanged when daily.budgetUsd is unset', async () => {
+    stubBudget({ budgetUsd: null, spentUsd: 0, pctUsed: null, exceeded: false });
+    renderToday();
+    expect(screen.getByText('spend today')).toBeInTheDocument();
+    expect(screen.getByText('sessions today')).toBeInTheDocument();
+    expect(screen.getByText('efficiency')).toBeInTheDocument();
+    expect(screen.getByText('flags')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('daily budget')).toBeNull());
+  });
+
+  it('shows spent over budget and percent used when a daily budget is set', async () => {
+    stubBudget({ budgetUsd: 10, spentUsd: 4, pctUsed: 40, exceeded: false });
+    renderToday();
+    expect(await screen.findByText('daily budget')).toBeInTheDocument();
+    expect(screen.getByText('$4.00 / $10.00')).toBeInTheDocument();
+    expect(screen.getByText('40% used')).toBeInTheDocument();
+  });
+
+  it('applies the warning treatment at 80 percent used', async () => {
+    stubBudget({ budgetUsd: 10, spentUsd: 8, pctUsed: 80, exceeded: false });
+    renderToday();
+    const value = await screen.findByText('$8.00 / $10.00');
+    expect(value.className).toMatch(/text-accent-amber/);
+    expect(screen.getByText('80% used')).toBeInTheDocument();
+  });
+
+  it('maps BudgetTracker thresholds onto Kpi tones', () => {
+    expect(dailyBudgetKpiTone(49.9, false)).toBe('good');
+    expect(dailyBudgetKpiTone(50, false)).toBe('warn');
+    expect(dailyBudgetKpiTone(80, false)).toBe('warn');
+    expect(dailyBudgetKpiTone(100, false)).toBe('bad');
+    expect(dailyBudgetKpiTone(99, true)).toBe('bad');
   });
 });
 
