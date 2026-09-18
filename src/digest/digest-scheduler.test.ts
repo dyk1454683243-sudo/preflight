@@ -12,7 +12,7 @@ import {
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 
 beforeEach(() => {
-  stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   jest.useFakeTimers();
 });
 
@@ -33,21 +33,23 @@ function errorResult(error: string): DigestSendResult {
   };
 }
 
+type SendFn = jest.Mock<() => Promise<DigestSendResult>>;
+
 function makeScheduler(
   overrides: {
     schedule?: string;
     getSchedule?: () => string;
-    send?: jest.Mock<Promise<DigestSendResult>, []>;
+    send?: SendFn;
     nowRef?: { current: Date };
     intervalMs?: number;
   } = {},
 ): {
   scheduler: DigestScheduler;
-  send: jest.Mock<Promise<DigestSendResult>, []>;
+  send: SendFn;
   nowRef: { current: Date };
 } {
   const send =
-    overrides.send ?? jest.fn<Promise<DigestSendResult>, []>().mockResolvedValue(okResult());
+    overrides.send ?? jest.fn<() => Promise<DigestSendResult>>().mockResolvedValue(okResult());
   const nowRef = overrides.nowRef ?? { current: new Date(2026, 8, 21, 8, 59, 0) };
   const getSchedule = overrides.getSchedule ?? (() => overrides.schedule ?? '0 9 * * 1');
   const scheduler = new DigestScheduler({
@@ -129,7 +131,7 @@ describe('DigestScheduler', () => {
 
   it('does not send twice while a previous send is still in flight', async () => {
     let resolveSend!: (value: DigestSendResult) => void;
-    const send = jest.fn<Promise<DigestSendResult>, []>().mockImplementation(
+    const send = jest.fn<() => Promise<DigestSendResult>>().mockImplementation(
       () =>
         new Promise<DigestSendResult>((resolve) => {
           resolveSend = resolve;
@@ -191,7 +193,7 @@ describe('DigestScheduler', () => {
 
   it('logs a skip when send reports no webhook, and a failure when send throws', async () => {
     const send = jest
-      .fn<Promise<DigestSendResult>, []>()
+      .fn<() => Promise<DigestSendResult>>()
       .mockResolvedValueOnce(
         errorResult('No webhook URL configured. Call nr_observe_subscribe_digest first.'),
       )
@@ -206,7 +208,7 @@ describe('DigestScheduler', () => {
     await jest.advanceTimersByTimeAsync(15_000);
     expect(send).toHaveBeenCalledTimes(2);
 
-    const logOutput = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
+    const logOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
     expect(logOutput).toMatch(/Scheduled digest skipped/);
     expect(logOutput).toMatch(/Scheduled digest failed/);
     scheduler.stop();
