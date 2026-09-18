@@ -50,6 +50,8 @@ preflight update
 | `npm run build`                     | Build TypeScript (`tsc --build`) and chmod the CLI binaries                                 |
 | `npm run build:clean`               | Remove build output                                                                         |
 | `npm test`                          | Run the full Jest suite (`maxWorkers: 1`)                                                   |
+| `npm run test:web`                  | Run the Vitest suite for `src/web/**` (jsdom)                                               |
+| `npm run test:e2e`                  | Run Playwright e2e (`e2e/`, after `npm run build`)                                          |
 | `npm run lint`                      | ESLint over `src/`                                                                          |
 | `npm run format`                    | Prettier write                                                                              |
 | `npm run format:check`              | Prettier check (no writes)                                                                  |
@@ -221,6 +223,33 @@ Logger writes to **stderr** as JSON. Never write to stdout — it's reserved for
 
 Tests live next to the code they test (`foo.test.ts` alongside `foo.ts`).
 
+### Jest (Node / MCP server)
+
+`npm test` runs the Jest suite for the MCP server and shared Node code.
+
+### Vitest (web dashboard)
+
+`npm run test:web` runs Vitest against `src/web/**/*.test.{ts,tsx}` (see `vitest.config.ts`).
+
+- Name web tests `*.test.ts` / `*.test.tsx` under `src/web/` so Vitest picks them up.
+- Do **not** put dashboard UI tests under the Jest tree; the pre-push hook and Jest config expect Node tests there, and `*.test.tsx` files under `src/web/` are reserved for Vitest.
+
+### Playwright e2e
+
+`npm run test:e2e` runs Playwright (`playwright.config.ts`, specs in `e2e/`). The `pretest:e2e` script builds first. Update snapshots with `npm run test:e2e:update`.
+
+### Web typecheck
+
+`npm run build` does **not** typecheck the Vite dashboard. After web UI changes, also run:
+
+```bash
+npx tsc -p tsconfig.web.json --noEmit
+```
+
+### Git worktrees
+
+A fresh `git worktree` has no `node_modules`. Run `npm ci` in that worktree before `npm test`, `npm run test:web`, or any `verify:*` / pre-push path that shells out to esbuild — otherwise those commands fail with missing-module errors.
+
 ### Writing tests
 
 ```typescript
@@ -250,6 +279,8 @@ See [TEST_PATTERNS.md](./docs/TEST_PATTERNS.md) for the full testing guide.
 
 - [ ] `npm run build` succeeds
 - [ ] `npm test` passes
+- [ ] If you touched `src/web/`: `npm run test:web` and `npx tsc -p tsconfig.web.json --noEmit` pass
+- [ ] If you touched e2e or the dashboard shell: `npm run test:e2e` passes (or explain why not)
 - [ ] `npm run lint` passes
 - [ ] You've reviewed your own diff
 
