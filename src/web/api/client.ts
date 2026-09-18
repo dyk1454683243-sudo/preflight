@@ -544,8 +544,8 @@ export const fetchWeekly = (signal?: AbortSignal): Promise<WeeklyRow[]> =>
   getJson<WeeklyRow[]>('/api/weekly', signal);
 
 // Mirrors BudgetStatus in src/metrics/budget-tracker.ts (not importable —
-// tsconfig.web.json excludes server source). Alerts.tsx never reads
-// `remainingUsd`, so it's omitted here to match the one real consumer exactly.
+// tsconfig.web.json excludes server source). Today.tsx and Alerts.tsx never
+// read `remainingUsd`, so it's omitted here to match the real consumers.
 export interface BudgetPeriod {
   readonly budgetUsd: number | null;
   readonly spentUsd: number;

@@ -8,7 +8,7 @@ import {
   type AlertEvent,
   type AntiPatternEvent,
 } from '../store/liveStore';
-import { Kpi } from '../components/Kpi';
+import { Kpi, type KpiTone } from '../components/Kpi';
 import { AnimatedCard } from '../components/AnimatedCard';
 import { DiscreteBlockChart, type DiscreteBlockChartItem } from '../components/DiscreteBlockChart';
 import { EmptyState } from '../components/EmptyState';
@@ -53,7 +53,9 @@ import {
   fetchComputeWaste,
   fetchQualityProxy,
   fetchApiFailures,
+  fetchBudget,
   type ApiFailureMetrics,
+  type BudgetStatus,
   fetchToolSelectionScore,
   fetchConcurrency,
   fetchActivityHeatmap,
@@ -221,6 +223,16 @@ interface ToolSelectionMetrics {
 
 const QUALITY_REFETCH_MS = 10_000;
 
+/**
+ * KPI tone for the daily budget meter. Matches BudgetTracker threshold
+ * crossings (50 / 80 / 100): warn from the first fire, bad once exceeded.
+ */
+export function dailyBudgetKpiTone(pctUsed: number | null, exceeded: boolean): KpiTone {
+  if (exceeded || (pctUsed !== null && pctUsed >= 100)) return 'bad';
+  if (pctUsed !== null && pctUsed >= 50) return 'warn';
+  return 'good';
+}
+
 export function Today(): JSX.Element {
   const cost = useLiveStore((s) => s.cost);
   const antiPatterns = useLiveStore((s) => s.antiPatterns);
@@ -236,6 +248,14 @@ export function Today(): JSX.Element {
     queryFn: ({ signal }) => fetchCost(signal),
     refetchInterval: 10_000,
   });
+  // Same query key and fetch as Alerts — do not introduce a second budget path.
+  const { data: budget } = useQuery<BudgetStatus>({
+    queryKey: qk.budget,
+    queryFn: ({ signal }) => fetchBudget(signal),
+    refetchInterval: 10_000,
+  });
+  const dailyBudget = budget?.daily;
+  const showDailyBudget = dailyBudget?.budgetUsd != null;
   const { data: aggregate, isPending: aggregatePending } = useQuery<TodayAggregateResponse>({
     queryKey: qk.sessionsTodayAggregate,
     queryFn: ({ signal }) => fetchTodayAggregate(signal),
@@ -444,7 +464,9 @@ export function Today(): JSX.Element {
         <>
           <AnimatedCard index={0} className="mb-4">
             <Card padding="lg" tone="elevated" glow="green">
-              <div className="grid grid-cols-5 gap-4">
+              <div
+                className={showDailyBudget ? 'grid grid-cols-6 gap-4' : 'grid grid-cols-5 gap-4'}
+              >
                 <Kpi
                   label="efficiency"
                   hero
@@ -489,6 +511,18 @@ export function Today(): JSX.Element {
                   animate
                   numericValue={flagsCount}
                 />
+                {dailyBudget?.budgetUsd != null && (
+                  <Kpi
+                    label="daily budget"
+                    value={`${formatUsd(dailyBudget.spentUsd)} / ${formatUsd(dailyBudget.budgetUsd)}`}
+                    sub={
+                      dailyBudget.pctUsed !== null
+                        ? `${formatPct(dailyBudget.pctUsed)} used`
+                        : undefined
+                    }
+                    tone={dailyBudgetKpiTone(dailyBudget.pctUsed, dailyBudget.exceeded)}
+                  />
+                )}
               </div>
             </Card>
             {watcherOff && (
