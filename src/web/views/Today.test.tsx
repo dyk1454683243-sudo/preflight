@@ -2010,6 +2010,78 @@ describe('Today view — Compute Waste panel', () => {
   });
 });
 
+describe('Today view — Tasks row', () => {
+  beforeEach(() => {
+    useLiveStore.setState({
+      connected: true,
+      recentToolCalls: [],
+      cost: { sessionTotalUsd: 1, todayTotalUsd: 1, forecastEodUsd: null },
+      antiPatterns: [],
+      firingAlerts: new Map(),
+      dismissedAlerts: new Set(),
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders completed tasks, average duration, and average tool calls when tasks exist', async () => {
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/api/task-completion')) {
+        return new Response(
+          JSON.stringify({
+            completedTasks: 2,
+            avgTaskDurationMs: 45_000,
+            avgToolCallsPerTask: 8,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    renderToday();
+    expect(await screen.findByText('completed tasks')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.getByText('avg duration')).toBeInTheDocument();
+    expect(screen.getByText('45s')).toBeInTheDocument();
+    expect(screen.getByText('avg tool calls / task')).toBeInTheDocument();
+    expect(screen.getByText('8')).toBeInTheDocument();
+    expect(screen.queryByText('No completed tasks yet')).toBeNull();
+  });
+
+  it('renders the empty state when completedTasks is 0', async () => {
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/api/task-completion')) {
+        return new Response(
+          JSON.stringify({
+            completedTasks: 0,
+            avgTaskDurationMs: null,
+            avgToolCallsPerTask: null,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    renderToday();
+    expect(await screen.findByText(/No completed tasks yet/)).toBeInTheDocument();
+    expect(screen.getByText('Tasks')).toBeInTheDocument();
+    expect(screen.queryByText('completed tasks')).toBeNull();
+    expect(screen.queryByText('avg duration')).toBeNull();
+    expect(screen.queryByText('avg tool calls / task')).toBeNull();
+  });
+});
+
 describe('Today view — cross-midnight session proration', () => {
   beforeEach(() => {
     useLiveStore.setState({

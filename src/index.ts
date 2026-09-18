@@ -1786,6 +1786,7 @@ async function main(): Promise<void> {
           collaborationProfiler,
           alertLog,
           taskDetector,
+          taskCompletionTracker,
           efficiencyScorer,
           qualityProxyTracker,
           toolSelectionScorer,

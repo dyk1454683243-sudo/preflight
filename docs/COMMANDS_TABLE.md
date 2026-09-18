@@ -1128,7 +1128,7 @@ Source: `src/tools/analytics-tools.ts`, `src/metrics/latency-tracker.ts`
 
 ### `nr_observe_get_task_completion_rate`
 
-Task lifecycle tracking: completed vs. in-progress vs. abandoned.
+Completed-task counts for the current session: how many tasks finished, how long they took, and how many tool calls they used.
 
 **Parameters:** None
 
@@ -1136,28 +1136,26 @@ Task lifecycle tracking: completed vs. in-progress vs. abandoned.
 
 ```json
 {
-  "detected_tasks": 8,
-  "completed": 6,
-  "in_progress": 1,
-  "abandoned": 1,
-  "completion_rate": 0.75,
-  "avg_duration_ms": 480000,
-  "avg_tool_calls_per_task": 12
+  "completedTasks": 6,
+  "avgTaskDurationMs": 480000,
+  "avgToolCallsPerTask": 12
 }
 ```
 
 **Data source:** `TaskCompletionTracker`
 
+**Dashboard:** `GET /api/task-completion` returns the same `TaskCompletionMetrics` snapshot and powers the Today Tasks row.
+
 **How it works:**
 
-- Uses `TaskDetector` output to identify task boundaries
-- Tracks state transitions: new → in-progress → completed (or abandoned if work stops)
-- `completion_rate` = `completed / (completed + abandoned)`
-- Helps identify whether tasks are finishing successfully
+- `TaskDetector` closes a task and calls `TaskCompletionTracker.recordTask()`
+- The tracker averages duration and tool-call count across completed tasks
+- Averages are `null` when `completedTasks` is 0
+- The same snapshot is served by this MCP tool and `GET /api/task-completion`
 
 **Requires:** `TaskCompletionTracker`, `TaskDetector`
 
-Source: `src/tools/analytics-tools.ts`, `src/metrics/task-completion-tracker.ts`
+Source: `src/tools/analytics-tools.ts`, `src/metrics/task-completion-tracker.ts`, `src/dashboard/routes/api-handler.ts`
 
 ---
 
