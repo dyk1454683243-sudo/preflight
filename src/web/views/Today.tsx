@@ -28,7 +28,7 @@ import {
   type ModelShareRow,
 } from '../components/UsageContributionPanel';
 import { AttentionList, type AttentionRow } from '../components/AttentionList';
-import { Card, Eyebrow, InfoTooltip, LiveBadge, Pill } from '../components/ui';
+import { Card, CostEstimateMarker, Eyebrow, InfoTooltip, LiveBadge, Pill } from '../components/ui';
 import {
   fetchRecentAlerts,
   fetchCacheHealth,
@@ -458,6 +458,7 @@ export function Today(): JSX.Element {
                   label="spend today"
                   tone="good"
                   value={spendLoading ? '…' : formatUsd(todayTotal)}
+                  accessory={<CostEstimateMarker />}
                   sub={
                     forecastKpiUsd != null && forecastKpiUsd > todayTotal
                       ? weekForecast != null

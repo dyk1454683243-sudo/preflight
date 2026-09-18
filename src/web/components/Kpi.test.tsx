@@ -44,6 +44,12 @@ describe('Kpi', () => {
     expect(screen.queryByText('0')).not.toBeInTheDocument();
   });
 
+  it('renders an accessory beside the value', () => {
+    render(<Kpi label="spend" value="$3.42" accessory={<span>est.</span>} />);
+    expect(screen.getByText('$3.42')).toBeInTheDocument();
+    expect(screen.getByText('est.')).toBeInTheDocument();
+  });
+
   it('assembles prefix/suffix/decimals around the animated value when no format is given', () => {
     render(
       <Kpi

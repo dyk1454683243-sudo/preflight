@@ -1,4 +1,4 @@
-import type { JSX } from 'react';
+import type { JSX, ReactNode } from 'react';
 
 import { useAnimatedValue } from '../hooks/useAnimatedValue';
 
@@ -37,6 +37,8 @@ export interface KpiProps {
    * ignored — the formatter owns the whole string.
    */
   readonly format?: (n: number) => string;
+  /** Optional control rendered beside the value (e.g. an estimate marker). */
+  readonly accessory?: ReactNode;
 }
 
 export function Kpi({
@@ -51,6 +53,7 @@ export function Kpi({
   suffix = '',
   decimals = 0,
   format,
+  accessory,
 }: KpiProps): JSX.Element {
   // `null` means "genuinely unknown", same as `undefined` — neither should
   // coalesce to a rendered `0`. Only a real number reaches the animate branch.
@@ -66,13 +69,16 @@ export function Kpi({
     animate && hasNumericValue ? (format ? animated : `${prefix}${animated}${suffix}`) : value;
 
   const valueClass = hero
-    ? 'text-3xl font-bold mt-1 tabular-nums gradient-text'
-    : `text-3xl font-bold mt-1 tabular-nums ${TONE[tone]}`;
+    ? 'text-3xl font-bold tabular-nums gradient-text'
+    : `text-3xl font-bold tabular-nums ${TONE[tone]}`;
 
   return (
     <div className="px-1">
       <div className="text-[10px] text-ink-muted uppercase tracking-wider font-medium">{label}</div>
-      <div className={valueClass}>{display}</div>
+      <div className="mt-1 flex items-baseline gap-1">
+        <div className={valueClass}>{display}</div>
+        {accessory}
+      </div>
       {sub && <div className="text-[10px] text-ink-muted mt-0.5">{sub}</div>}
     </div>
   );

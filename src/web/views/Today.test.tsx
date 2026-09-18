@@ -61,6 +61,10 @@ describe('Today view', () => {
   it('renders today total cost in the spend KPI', () => {
     renderToday();
     expect(screen.getByText('$12.17')).toBeInTheDocument();
+    const spendTile = screen.getByText('spend today').closest('.px-1') as HTMLElement;
+    expect(
+      within(spendTile).getByRole('button', { name: 'Why this cost is an estimate' }),
+    ).toBeInTheDocument();
   });
 
   it('renders the efficiency score KPI', () => {

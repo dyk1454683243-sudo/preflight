@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Today's spend KPI and the Sessions list cost column now show an `est.` marker. Hover (or focus) lists why the figure can differ from a bill: public list price, this-machine/hooked-platform scope, estimated cache-write tokens on some adapters, and billing lag and period boundaries. The copy lives in one place so later org-spend pairing can reuse it.
 - Share tables in "What's contributing to your spend" now break each row's tokens down by category on hover: input, output, cache read, and cache write, on both the Tokens and Cost cells of the Skills, Subagents, and Plugins tables. Session records persist the same breakdown per skill, subagent type, and tool, and cache-write tokens now count toward every table's token total, so skills and subagents are measured the same way.
 
 ## [1.55.3] - 2026-09-17

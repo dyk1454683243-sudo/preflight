@@ -100,6 +100,8 @@ describe('Sessions view', () => {
     await waitFor(() => expect(screen.getByText(/s1/)).toBeInTheDocument());
     expect(screen.getByText('42 calls')).toBeInTheDocument();
     expect(screen.getByText('$1.23')).toBeInTheDocument();
+    const costCell = screen.getByText('$1.23').closest('span') as HTMLElement;
+    expect(within(costCell).getByLabelText('Why this cost is an estimate')).toBeInTheDocument();
   });
 
   it('shows an empty-state message when list is empty', async () => {
