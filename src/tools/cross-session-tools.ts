@@ -6,8 +6,8 @@
  *   nr_observe_get_claudemd_impact, nr_observe_get_cost_per_outcome,
  *   nr_observe_get_recommendations, nr_observe_get_platform_comparison,
  *   nr_observe_get_team_summary, nr_observe_subscribe_digest,
- *   nr_observe_unsubscribe_digest, nr_observe_send_digest,
- *   nr_observe_get_personal_insights
+ *   nr_observe_unsubscribe_digest, nr_observe_get_digest_preview,
+ *   nr_observe_send_digest, nr_observe_get_personal_insights
  *
  * Tool defs and handlers are exported for integration into the main
  * registerTools() in session-stats.ts.
@@ -18,7 +18,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { validateSsrfUrl } from '../security/index.js';
 import { stagingHost } from '../shared/transport/http-client.js';
 import type { SessionStore } from '../storage/session-store.js';
-import { formatSlackDigest } from '../digest/digest-formatter.js';
+import { buildCurrentWeekDigest } from '../digest/digest-formatter.js';
 import { sendSlackDigest } from '../digest/digest-sender.js';
 import type { WeeklySummaryGenerator, WeeklySummary } from '../storage/weekly-summary.js';
 import { getIsoWeekId } from '../storage/weekly-summary.js';
@@ -258,6 +258,14 @@ export const UNSUBSCRIBE_DIGEST_TOOL = {
   description: 'Remove the registered Slack webhook for weekly digests.',
   inputSchema: { type: 'object' as const, properties: {} },
   annotations: { readOnlyHint: false },
+};
+
+export const GET_DIGEST_PREVIEW_TOOL = {
+  name: 'nr_observe_get_digest_preview',
+  description:
+    'Preview the current weekly AI coding digest as Slack Block Kit plus plain text, without sending it.',
+  inputSchema: { type: 'object' as const, properties: {} },
+  annotations: { readOnlyHint: true },
 };
 
 export const SEND_DIGEST_TOOL = {
@@ -1041,9 +1049,7 @@ export async function handleSendDigest(
     };
   }
 
-  const currentWeek = getIsoWeekId(new Date());
-  const summary = weeklySummaryGenerator.generate(currentWeek);
-  const payload = formatSlackDigest(summary);
+  const { week, payload } = buildCurrentWeekDigest(weeklySummaryGenerator);
 
   try {
     await sendSlackDigest(webhookUrl, payload);
@@ -1053,7 +1059,7 @@ export async function handleSendDigest(
           type: 'text',
           text: JSON.stringify({
             ok: true,
-            week: currentWeek,
+            week,
             message: 'Digest sent successfully.',
           }),
         },
@@ -1071,6 +1077,15 @@ export async function handleSendDigest(
       ],
     };
   }
+}
+
+export function handleGetDigestPreview(weeklySummaryGenerator: WeeklySummaryGenerator): {
+  content: Array<{ type: 'text'; text: string }>;
+} {
+  const preview = buildCurrentWeekDigest(weeklySummaryGenerator);
+  return {
+    content: [{ type: 'text', text: JSON.stringify(preview) }],
+  };
 }
 
 export function handleGetPersonalInsights(
@@ -1249,6 +1264,15 @@ export function registerCrossSessionTools(deps: CrossSessionToolsDeps): Register
         const missing = requireAvailable(!!deps.configFilePath, 'configFilePath not available');
         if (missing) return missing;
         return handleUnsubscribeDigest(deps.configFilePath!);
+      },
+    },
+    {
+      definition: GET_DIGEST_PREVIEW_TOOL,
+      available: !!deps.weeklySummaryGenerator,
+      handle: () => {
+        const check = requireTracker(deps.weeklySummaryGenerator, 'WeeklySummaryGenerator');
+        if (!check.ok) return check.result;
+        return handleGetDigestPreview(check.value);
       },
     },
     {

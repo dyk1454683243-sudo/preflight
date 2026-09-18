@@ -5602,6 +5602,88 @@ describe('api-handler POST /api/digest/send', () => {
   });
 });
 
+describe('api-handler GET /api/digest/preview', () => {
+  const tmpDirs: string[] = [];
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    for (const dir of tmpDirs.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    global.fetch = originalFetch;
+  });
+
+  function makeConfigFile(content: Record<string, unknown>): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-digest-preview-test-'));
+    tmpDirs.push(dir);
+    const filePath = path.join(dir, 'config.json');
+    fs.writeFileSync(filePath, JSON.stringify(content, null, 2));
+    return filePath;
+  }
+
+  const fakeSummary = {
+    week: '2026-W29',
+    generatedAt: 1_700_000_000_000,
+    developers: [],
+    sessionCount: 4,
+    totalCostUsd: 12.5,
+    avgCostPerSession: 3.125,
+    avgEfficiencyScore: 0.8,
+    totalToolCalls: 0,
+    toolBreakdown: {},
+    totalTasksCompleted: 0,
+    taskSuccessRate: null,
+    antiPatternCounts: { thrashing: 1 },
+    perDeveloper: {},
+    perPlatform: {},
+  };
+
+  it('returns 503 when weeklySummaryGenerator is missing', async () => {
+    const handler = createApiHandler({});
+    const req = { method: 'GET', url: '/api/digest/preview' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(503);
+    expect(JSON.parse(body())).toEqual({ error: 'unavailable', what: 'digest' });
+  });
+
+  it('returns the same payload send would POST and does not call the webhook', async () => {
+    const configFilePath = makeConfigFile({
+      digestWebhookUrl: 'https://hooks.slack.com/services/T/B/X',
+    });
+    const fetchMock = jest.fn(async () => ({ ok: true, status: 200 }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const handler = createApiHandler({
+      configFilePath,
+      weeklySummaryGenerator: {
+        generate: () => fakeSummary,
+        loadRecentWeeks: () => [],
+      } as unknown as Parameters<typeof createApiHandler>[0]['weeklySummaryGenerator'],
+    });
+
+    const previewReq = { method: 'GET', url: '/api/digest/preview' } as IncomingMessage;
+    const preview = fakeRes();
+    await handler(previewReq, preview.res);
+    expect(preview.status()).toBe(200);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const previewBody = JSON.parse(preview.body()) as {
+      week: string;
+      payload: { blocks: unknown[] };
+      text: string;
+    };
+    expect(previewBody.text).toContain('Weekly AI Coding Summary');
+    expect(previewBody.payload.blocks.length).toBeGreaterThan(0);
+
+    const sendReq = { method: 'POST', url: '/api/digest/send' } as IncomingMessage;
+    const send = fakeRes();
+    await handler(sendReq, send.res);
+    expect(send.status()).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const posted = JSON.parse(String((fetchMock.mock.calls[0]![1] as { body: string }).body));
+    expect(posted).toEqual(previewBody.payload);
+  });
+});
+
 describe('api-handler GET /api/cache-health', () => {
   it('returns 503 when costTracker is missing', async () => {
     const handler = createApiHandler({});

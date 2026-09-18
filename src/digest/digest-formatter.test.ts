@@ -1,6 +1,11 @@
-import { describe, it, expect } from '@jest/globals';
-import type { WeeklySummary } from '../storage/weekly-summary.js';
-import { formatSlackDigest } from './digest-formatter.js';
+import { describe, it, expect, jest } from '@jest/globals';
+import type { WeeklySummary, WeeklySummaryGenerator } from '../storage/weekly-summary.js';
+import {
+  buildCurrentWeekDigest,
+  buildDigestContent,
+  formatSlackDigest,
+  renderDigestPlainText,
+} from './digest-formatter.js';
 
 function makeWeeklySummary(overrides: Partial<WeeklySummary> = {}): WeeklySummary {
   return {
@@ -189,5 +194,41 @@ describe('formatSlackDigest', () => {
     );
     const text = JSON.stringify(payload).toLowerCase();
     expect(text).not.toContain('instrumentation');
+  });
+});
+
+describe('buildDigestContent / renderDigestPlainText', () => {
+  it('returns the same Block Kit payload formatSlackDigest would produce', () => {
+    const summary = makeWeeklySummary({
+      totalCostUsd: 1.23,
+      avgEfficiencyScore: 0.72,
+      sessionCount: 5,
+      antiPatternCounts: { thrashing: 3 },
+    });
+    const { payload, text } = buildDigestContent(summary);
+    expect(payload).toEqual(formatSlackDigest(summary));
+    expect(text).toBe(renderDigestPlainText(payload));
+    expect(text).toContain('Weekly AI Coding Summary');
+    expect(text).toContain('Total Cost:');
+    expect(text).toContain('$1.2300');
+    expect(text).toContain('72.0/100');
+    expect(text).toContain('thrashing');
+    expect(text).not.toContain('*Total Cost:*');
+  });
+
+  it('buildCurrentWeekDigest uses the generator fixture and does not call fetch', () => {
+    const summary = makeWeeklySummary({ totalCostUsd: 4.5, sessionCount: 2 });
+    const generate = jest.fn(() => summary);
+    const fetchSpy = jest.spyOn(global, 'fetch');
+
+    try {
+      const preview = buildCurrentWeekDigest({ generate } as unknown as WeeklySummaryGenerator);
+      expect(generate).toHaveBeenCalledTimes(1);
+      expect(preview.payload).toEqual(formatSlackDigest(summary));
+      expect(preview.text).toBe(renderDigestPlainText(preview.payload));
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });

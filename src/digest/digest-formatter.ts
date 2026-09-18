@@ -1,4 +1,8 @@
-import type { WeeklySummary } from '../storage/weekly-summary.js';
+import {
+  getIsoWeekId,
+  type WeeklySummary,
+  type WeeklySummaryGenerator,
+} from '../storage/weekly-summary.js';
 
 interface SlackHeaderBlock {
   readonly type: 'header';
@@ -24,6 +28,56 @@ type SlackBlock = SlackHeaderBlock | SlackSectionBlock | SlackDividerBlock | Sla
 export type SlackBlockKitPayload = {
   readonly blocks: readonly SlackBlock[];
 };
+
+export interface DigestPreview {
+  readonly week: string;
+  readonly payload: SlackBlockKitPayload;
+  readonly text: string;
+}
+
+function stripMrkdwn(text: string): string {
+  return text
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/_([^_]+)_/g, '$1');
+}
+
+/** Plain-text rendering of a Block Kit digest, derived from the same payload Slack receives. */
+export function renderDigestPlainText(payload: SlackBlockKitPayload): string {
+  const parts: string[] = [];
+  for (const block of payload.blocks) {
+    switch (block.type) {
+      case 'header':
+        parts.push(block.text.text);
+        break;
+      case 'section':
+        parts.push(block.fields.map((field) => stripMrkdwn(field.text)).join('\n\n'));
+        break;
+      case 'divider':
+        parts.push('---');
+        break;
+      case 'context':
+        parts.push(block.elements.map((el) => stripMrkdwn(el.text)).join('\n'));
+        break;
+    }
+  }
+  return parts.join('\n\n');
+}
+
+export function buildDigestContent(summary: WeeklySummary): {
+  readonly payload: SlackBlockKitPayload;
+  readonly text: string;
+} {
+  const payload = formatSlackDigest(summary);
+  return { payload, text: renderDigestPlainText(payload) };
+}
+
+/** Same week + Block Kit payload the send path posts, plus a plain-text rendering. */
+export function buildCurrentWeekDigest(generator: WeeklySummaryGenerator): DigestPreview {
+  const week = getIsoWeekId(new Date());
+  const summary = generator.generate(week);
+  return { week, ...buildDigestContent(summary) };
+}
 
 export function formatSlackDigest(summary: WeeklySummary): SlackBlockKitPayload {
   const totalCost = summary.totalCostUsd?.toFixed(4) ?? '—';

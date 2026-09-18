@@ -196,3 +196,74 @@ describe('Alerts view — error and loading states', () => {
     settingsBox.current?.();
   });
 });
+
+describe('Alerts view — digest preview', () => {
+  const PREVIEW = {
+    week: '2026-W38',
+    payload: { blocks: [] },
+    text: 'Weekly AI Coding Summary\n\nTotal Cost:\n$1.2300\n\nSessions:\n5',
+  };
+
+  function renderAlertsWithDigest(settings: typeof BASE_SETTINGS = BASE_SETTINGS) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    const sendCalls: RequestInit[] = [];
+    let previewCalls = 0;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      if (url === '/api/budget') return jsonResponse(DEFAULT_BUDGET);
+      if (url === '/api/settings') return jsonResponse(settings);
+      if (url === '/api/digest/preview') {
+        previewCalls += 1;
+        return jsonResponse(PREVIEW);
+      }
+      if (url === '/api/digest/send' && init?.method === 'POST') {
+        sendCalls.push(init);
+        return jsonResponse({
+          content: [{ type: 'text', text: JSON.stringify({ ok: true }) }],
+        });
+      }
+      return jsonResponse({});
+    }) as typeof fetch;
+    render(
+      <QueryClientProvider client={qc}>
+        <Alerts />
+      </QueryClientProvider>,
+    );
+    return { sendCalls, getPreviewCalls: () => previewCalls };
+  }
+
+  it('opens a dialog that renders the plain-text preview', async () => {
+    const { getPreviewCalls, sendCalls } = renderAlertsWithDigest();
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview digest' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Digest preview')).toBeInTheDocument();
+    expect(await within(dialog).findByText('2026-W38')).toBeInTheDocument();
+    expect(within(dialog).getByText(/Weekly AI Coding Summary/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/\$1\.2300/)).toBeInTheDocument();
+    await waitFor(() => expect(getPreviewCalls()).toBe(1));
+    expect(sendCalls).toHaveLength(0);
+  });
+
+  it('Send now in the dialog posts to the existing send route', async () => {
+    const { sendCalls } = renderAlertsWithDigest();
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview digest' }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Send now' })).toBeEnabled(),
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send now' }));
+
+    await waitFor(() => expect(sendCalls).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await screen.findByText('Digest sent.')).toBeInTheDocument();
+  });
+
+  it('disables Send now when no webhook is configured', async () => {
+    renderAlertsWithDigest({ ...BASE_SETTINGS, digestWebhookUrl: null });
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview digest' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText(/Weekly AI Coding Summary/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Send now' })).toBeDisabled();
+    expect(within(dialog).getByText(/Configure a Slack webhook/)).toBeInTheDocument();
+  });
+});

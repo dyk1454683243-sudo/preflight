@@ -12,7 +12,8 @@ import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { SessionStore } from '../storage/session-store.js';
 import type { FullSessionSummary } from '../storage/session-store.js';
-import { WeeklySummaryGenerator } from '../storage/weekly-summary.js';
+import { formatSlackDigest } from '../digest/digest-formatter.js';
+import { WeeklySummaryGenerator, type WeeklySummary } from '../storage/weekly-summary.js';
 import { TrendAnalyzer } from '../metrics/trend-analyzer.js';
 import { CollaborationProfiler } from '../metrics/collaboration-profile.js';
 import { ClaudeMdTracker } from '../metrics/claudemd-tracker.js';
@@ -36,6 +37,7 @@ import {
   handleGetTeamSummary,
   handleSubscribeDigest,
   handleUnsubscribeDigest,
+  handleGetDigestPreview,
   handleSendDigest,
   handleGetPersonalInsights,
   toFiniteNumber,
@@ -1253,6 +1255,59 @@ describe('Cross-session tool handlers', () => {
       expect(body.error).toMatch(/Call nr_observe_subscribe_digest first/);
     });
 
+    it('preview returns the same Block Kit payload send would deliver and does not call the webhook', async () => {
+      const fixture: WeeklySummary = {
+        week: '2026-W38',
+        generatedAt: 1_700_000_000_000,
+        developers: ['alice'],
+        sessionCount: 4,
+        totalCostUsd: 12.5,
+        avgCostPerSession: 3.125,
+        avgEfficiencyScore: 0.8,
+        totalToolCalls: 20,
+        toolBreakdown: { Read: 10 },
+        totalTasksCompleted: 3,
+        taskSuccessRate: 1,
+        antiPatternCounts: { thrashing: 2 },
+        perDeveloper: {},
+        perPlatform: {},
+      };
+      const generator = {
+        generate: jest.fn(() => fixture),
+      } as unknown as WeeklySummaryGenerator;
+
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockImplementation(async () => ({ ok: true }) as Response);
+
+      try {
+        const preview = handleGetDigestPreview(generator);
+        const previewBody = JSON.parse(preview.content[0]!.text) as {
+          week: string;
+          payload: ReturnType<typeof formatSlackDigest>;
+          text: string;
+        };
+
+        expect(previewBody.payload).toEqual(formatSlackDigest(fixture));
+        expect(previewBody.text).toContain('Weekly AI Coding Summary');
+        expect(fetchSpy).not.toHaveBeenCalled();
+
+        const configFilePath = resolve(tmpDir, 'config.json');
+        writeFileSync(
+          configFilePath,
+          JSON.stringify({ digestWebhookUrl: 'https://hooks.slack.com/services/T000/B000/XXXX' }),
+          'utf-8',
+        );
+
+        await handleSendDigest(generator, configFilePath);
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        const posted = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body));
+        expect(posted).toEqual(previewBody.payload);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
     it('posts the formatted weekly digest via sendSlackDigest when a webhook is configured', async () => {
       const configFilePath = resolve(tmpDir, 'config.json');
       const webhookUrl = 'https://hooks.slack.com/services/T000/B000/XXXX';
@@ -1302,6 +1357,7 @@ describe('registerCrossSessionTools()', () => {
       'nr_observe_get_claudemd_impact',
       'nr_observe_get_collaboration_profile',
       'nr_observe_get_cost_per_outcome',
+      'nr_observe_get_digest_preview',
       'nr_observe_get_model_recommendation',
       'nr_observe_get_personal_insights',
       'nr_observe_get_platform_comparison',
@@ -1326,6 +1382,18 @@ describe('registerCrossSessionTools()', () => {
     expect(result.isError).toBe(true);
     expect(JSON.parse(result.content[0]!.text)).toEqual({
       error: 'teamId or nrApiKey not configured',
+    });
+  });
+
+  it('gates nr_observe_get_digest_preview on weeklySummaryGenerator', async () => {
+    const { tools, handlers } = registerCrossSessionTools({});
+    expect(tools.map((t: { name: string }) => t.name)).not.toContain(
+      'nr_observe_get_digest_preview',
+    );
+    const result = await handlers.nr_observe_get_digest_preview!(undefined);
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]!.text)).toEqual({
+      error: 'WeeklySummaryGenerator not available',
     });
   });
 
@@ -1388,6 +1456,7 @@ describe('registerCrossSessionTools()', () => {
       'nr_observe_get_claudemd_impact',
       'nr_observe_get_collaboration_profile',
       'nr_observe_get_cost_per_outcome',
+      'nr_observe_get_digest_preview',
       'nr_observe_get_model_recommendation',
       'nr_observe_get_personal_insights',
       'nr_observe_get_platform_comparison',
