@@ -9,6 +9,7 @@ import {
   fetchActivityHeatmap,
   patchSettings,
   postDigestSend,
+  fetchDigestPreview,
   qk,
   NotFoundError,
 } from './client';
@@ -78,6 +79,20 @@ describe('api/client', () => {
       )) as typeof globalThis.fetch;
     // Should throw an error with the HTTP status, not a SyntaxError from r.json()
     await expect(patchSettings({ developer: 'test' })).rejects.toThrow(/502/);
+  });
+
+  it('fetchDigestPreview hits /api/digest/preview and returns JSON', async () => {
+    const payload = { week: '2026-W38', payload: { blocks: [] }, text: 'preview' };
+    globalThis.fetch = ((u: string) => {
+      expect(u).toBe('/api/digest/preview');
+      return Promise.resolve(
+        new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    }) as typeof globalThis.fetch;
+    await expect(fetchDigestPreview()).resolves.toEqual(payload);
   });
 
   it('postDigestSend throws HTTP status error when server returns non-JSON error body', async () => {

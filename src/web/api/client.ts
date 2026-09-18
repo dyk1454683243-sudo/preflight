@@ -1357,6 +1357,15 @@ export const postDigestSend = (): Promise<DigestSendResponse> =>
     return (await r.json()) as DigestSendResponse;
   });
 
+export interface DigestPreviewResponse {
+  readonly week: string;
+  readonly payload: { readonly blocks: readonly unknown[] };
+  readonly text: string;
+}
+
+export const fetchDigestPreview = (signal?: AbortSignal): Promise<DigestPreviewResponse> =>
+  getJson<DigestPreviewResponse>('/api/digest/preview', signal);
+
 export interface ObservabilityHealthResponse {
   readonly watcherActive?: boolean;
   readonly watcherDisabledByLock?: boolean;
@@ -1582,6 +1591,7 @@ export const qk = {
   cacheHealth: ['cache-health'] as const,
   costPerTool: (days?: number) => ['cost-per-tool', days] as const,
   settings: ['settings'] as const,
+  digestPreview: ['digest', 'preview'] as const,
   sessionsLive: ['sessions', 'live'] as const,
   sessionsTodayAggregate: ['sessions', 'today', 'aggregate'] as const,
   workflows: ['workflows'] as const,

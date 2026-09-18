@@ -5,14 +5,17 @@ import { Link } from 'wouter';
 
 import {
   fetchBudget,
+  fetchDigestPreview,
   fetchSettings,
   patchSettings,
   postDigestSend,
   qk,
   type BudgetStatus,
   type BudgetPeriod,
+  type DigestPreviewResponse,
 } from '../api/client';
 import type { SettingsPatch } from '../api/client';
+import { DigestPreviewDialog } from '../components/DigestPreviewDialog';
 import { EmptyState } from '../components/EmptyState';
 import { Button, Card, Eyebrow, Pill, SectionHeader } from '../components/ui';
 import { formatUsd } from '../lib/format';
@@ -89,10 +92,17 @@ export function Alerts(): JSX.Element {
   const [webhookUrl, setWebhookUrl] = useState<string | null | undefined>(undefined);
   const [schedule, setSchedule] = useState<string | null>(null);
   const [digestStatus, setDigestStatus] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const saveMutation = useMutation({
     mutationFn: (patch: SettingsPatch) => patchSettings(patch),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.settings }),
+  });
+
+  const previewQ = useQuery<DigestPreviewResponse>({
+    queryKey: qk.digestPreview,
+    queryFn: ({ signal }) => fetchDigestPreview(signal),
+    enabled: previewOpen,
   });
 
   const sendMutation = useMutation({
@@ -105,6 +115,7 @@ export function Alerts(): JSX.Element {
       } catch {
         setDigestStatus('Done.');
       }
+      setPreviewOpen(false);
       setTimeout(() => setDigestStatus(null), 4000);
     },
     onError: (err) => {
@@ -334,6 +345,10 @@ export function Alerts(): JSX.Element {
                 </Button>
               )}
 
+              <Button variant="secondary" size="md" onClick={() => setPreviewOpen(true)}>
+                Preview digest
+              </Button>
+
               <Button
                 variant="secondary"
                 size="md"
@@ -349,6 +364,18 @@ export function Alerts(): JSX.Element {
           </>
         )}
       </Card>
+
+      <DigestPreviewDialog
+        open={previewOpen}
+        week={previewQ.data?.week}
+        text={previewQ.data?.text}
+        loading={previewQ.isLoading}
+        error={previewQ.isError ? 'Failed to load digest preview.' : null}
+        canSend={Boolean(settings?.digestWebhookUrl)}
+        sending={sendMutation.isPending}
+        onClose={() => setPreviewOpen(false)}
+        onSend={() => sendMutation.mutate()}
+      />
     </section>
   );
 }

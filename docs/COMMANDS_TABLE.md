@@ -1909,9 +1909,47 @@ Source: `src/tools/cross-session-tools.ts`
 
 ---
 
+### `nr_observe_get_digest_preview`
+
+Preview the current weekly AI coding digest without sending it. Returns the same Slack Block Kit payload `nr_observe_send_digest` would POST, plus a plain-text rendering.
+
+**Parameters:** None
+
+**Returns:**
+
+```json
+{
+  "week": "2026-W20",
+  "payload": {
+    "blocks": [
+      {
+        "type": "header",
+        "text": { "type": "plain_text", "text": "🤖 Weekly AI Coding Summary" }
+      }
+    ]
+  },
+  "text": "🤖 Weekly AI Coding Summary\n\nTotal Cost:\n$1.2300\n\n..."
+}
+```
+
+**Data source:** `WeeklySummaryGenerator` (current ISO week)
+
+**How it works:**
+
+1. Generates the current week's summary via `WeeklySummaryGenerator` — the same `generate(currentWeek)` call the send path uses
+2. Formats a Slack Block Kit payload via `formatSlackDigest()`
+3. Returns that payload plus a plain-text rendering derived from it
+4. Makes no outbound request and does not require a webhook
+
+**Requires:** `WeeklySummaryGenerator`
+
+Source: `src/tools/cross-session-tools.ts`
+
+---
+
 ### `nr_observe_send_digest`
 
-Generate the current weekly AI coding summary and POST it to the configured Slack webhook immediately.
+Generate the current weekly AI coding summary and POST it to the configured Slack webhook immediately. To inspect the payload first, call `nr_observe_get_digest_preview`.
 
 **Parameters:** None
 

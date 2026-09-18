@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **The weekly Slack digest can now be previewed before it is sent.** `GET /api/digest/preview` and `nr_observe_get_digest_preview` return the same Block Kit payload the send path would deliver, plus a plain-text rendering, without posting to Slack. The Alerts page has a Preview digest dialog with a Send now action.
+
 ## [1.56.0] - 2026-09-17
 
 ### Added

@@ -78,6 +78,7 @@ and wiring the hooks that populate this data in the first place.
 - `nr_observe_get_team_summary`
 - `nr_observe_subscribe_digest`
 - `nr_observe_unsubscribe_digest`
+- `nr_observe_get_digest_preview`
 - `nr_observe_send_digest`
 
 Full parameter/return-shape reference for every tool lives in this repo's

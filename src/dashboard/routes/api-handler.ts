@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import type { McpServerConfig } from '../../config.js';
 import { normalizeDeveloperName, redactSensitive } from '../../config.js';
+import { buildCurrentWeekDigest } from '../../digest/digest-formatter.js';
 import {
   isSyntheticSessionId,
   isUnscopedAggregatorSessionId,
@@ -3123,6 +3124,11 @@ export function createApiHandler(
 
     writeFileSync(deps.configFilePath, JSON.stringify(existing, null, 2), { mode: 0o600 });
     jsonOk(res, { ok: true, restartRequired: !digestUrlOnly });
+  });
+
+  routes.set('GET /api/digest/preview', (_req, res) => {
+    if (!deps.weeklySummaryGenerator) return unavailable(res, 'digest');
+    jsonOk(res, buildCurrentWeekDigest(deps.weeklySummaryGenerator));
   });
 
   routes.set('POST /api/digest/send', async (_req, res) => {
