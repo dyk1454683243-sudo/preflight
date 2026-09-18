@@ -2253,6 +2253,74 @@ describe('preflight doctor', () => {
     await prog.parseAsync(['node', 'preflight', 'doctor']);
     expect(process.exitCode).toBe(2);
   });
+
+  it('--json prints valid JSON with the same check names as human mode', async () => {
+    const checks = [
+      makeCheck({ check: 'Config valid', status: 'ok', detail: 'Config loaded' }),
+      makeCheck({ check: 'Hooks wired', status: 'ok', detail: 'wired' }),
+      makeCheck({
+        check: 'NR reachable',
+        status: 'fail',
+        detail: 'timeout',
+        fix: 'check network',
+      }),
+    ];
+    mockedRunDiagnostics.mockResolvedValue(checks);
+
+    const { createInstallProgram } = await import('./cli.js');
+    const humanProg = createInstallProgram();
+    await humanProg.parseAsync(['node', 'preflight', 'doctor']);
+    const human = output.join('');
+    expect(human).toContain('Config valid');
+    expect(human).toContain('Hooks wired');
+    expect(human).toContain('NR reachable');
+
+    output.length = 0;
+    process.exitCode = undefined;
+
+    const jsonProg = createInstallProgram();
+    await jsonProg.parseAsync(['node', 'preflight', 'doctor', '--json']);
+    const parsed = JSON.parse(output.join('')) as DiagnosticCheck[];
+    expect(parsed.map((c) => c.check)).toEqual(checks.map((c) => c.check));
+    expect(parsed).toEqual(checks);
+  });
+
+  it('--json writes only the DiagnosticCheck array to stdout', async () => {
+    mockedRunDiagnostics.mockResolvedValue([makeCheck({ status: 'ok' })]);
+    const { createInstallProgram } = await import('./cli.js');
+    const prog = createInstallProgram();
+    await prog.parseAsync(['node', 'preflight', 'doctor', '--json']);
+    const raw = output.join('');
+    expect(raw).not.toContain('Running diagnostics');
+    expect(raw).not.toContain('All checks passed');
+    expect(() => JSON.parse(raw)).not.toThrow();
+  });
+
+  it('--json sets exit code 1 when a check fails', async () => {
+    mockedRunDiagnostics.mockResolvedValue([
+      makeCheck({ status: 'fail', detail: 'bad', fix: 'preflight install' }),
+    ]);
+    const { createInstallProgram } = await import('./cli.js');
+    const prog = createInstallProgram();
+    await prog.parseAsync(['node', 'preflight', 'doctor', '--json']);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('--json sets exit code 2 when only warnings', async () => {
+    mockedRunDiagnostics.mockResolvedValue([makeCheck({ status: 'warn', detail: 'mild' })]);
+    const { createInstallProgram } = await import('./cli.js');
+    const prog = createInstallProgram();
+    await prog.parseAsync(['node', 'preflight', 'doctor', '--json']);
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('--json exits 0 when all checks pass', async () => {
+    mockedRunDiagnostics.mockResolvedValue([makeCheck({ status: 'ok' })]);
+    const { createInstallProgram } = await import('./cli.js');
+    const prog = createInstallProgram();
+    await prog.parseAsync(['node', 'preflight', 'doctor', '--json']);
+    expect(process.exitCode).toBeFalsy();
+  });
 });
 
 // ---------------------------------------------------------------------------
