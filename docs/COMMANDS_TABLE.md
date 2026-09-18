@@ -189,6 +189,105 @@ Source: `src/tools/session-stats.ts`
 
 ---
 
+### `nr_observe_report_tool_call`
+
+Report a non-MCP tool call (a file read/write, a terminal command) so Preflight can account for it. MCP tool calls are captured automatically by the proxy. This is the self-report path for the generic-MCP adapter — platforms with first-class hooks do not need it.
+
+**Parameters:**
+
+| Parameter           | Type    | Required | Description                                                                    |
+| ------------------- | ------- | -------- | ------------------------------------------------------------------------------ |
+| `tool`              | string  | Yes      | Tool name (e.g., `Read`, `Edit`, `Bash`)                                       |
+| `success`           | boolean | Yes      | Whether the tool call succeeded                                                |
+| `input`             | object  | No       | Tool input parameters; `file_path` and `command` are read from it when present |
+| `input_size_bytes`  | number  | No       | Size of the tool input in bytes                                                |
+| `output_size_bytes` | number  | No       | Size of the tool output in bytes                                               |
+| `duration_ms`       | number  | No       | Duration of the tool call in milliseconds                                      |
+| `error`             | string  | No       | Error message when the call failed                                             |
+| `timestamp`         | number  | No       | Epoch milliseconds when the call occurred (defaults to now)                    |
+
+**Returns:**
+
+```json
+{
+  "recorded": true,
+  "tool": "Read",
+  "timestamp": 1713700000000
+}
+```
+
+**Data source:** `GenericMcpAdapter` → `SessionTracker` + `NrIngestManager`
+
+**How it works:** Validates the report, normalizes it into the same `NormalizedToolCall` shape the first-class adapters produce, records it on the `SessionTracker`, and forwards it to the New Relic ingest manager. See [ADAPTERS.md](./ADAPTERS.md) for the generic-MCP setup.
+
+**Requires:** `GenericMcpAdapter` (always constructed on the `--stdio` path so these tools stay listed)
+
+Source: `src/tools/generic-mcp-tools.ts`, `src/platforms/generic-mcp-adapter.ts`
+
+---
+
+### `nr_observe_report_session_start`
+
+Report that a new AI coding session has begun, so later `nr_observe_report_tool_call` events carry the right platform/model/developer metadata.
+
+**Parameters:**
+
+| Parameter   | Type   | Required | Description                             |
+| ----------- | ------ | -------- | --------------------------------------- |
+| `platform`  | string | Yes      | Platform name (e.g., `my-ai-assistant`) |
+| `model`     | string | No       | AI model being used                     |
+| `developer` | string | No       | Developer name or identifier            |
+
+**Returns:**
+
+```json
+{
+  "recorded": true,
+  "platform": "my-ai-assistant"
+}
+```
+
+**Data source:** `GenericMcpAdapter`
+
+**How it works:** Stores the metadata on the adapter. Subsequent `nr_observe_report_tool_call` events are normalized under it instead of the `generic-mcp` default.
+
+**Requires:** `GenericMcpAdapter` (always constructed on the `--stdio` path)
+
+Source: `src/tools/generic-mcp-tools.ts`, `src/platforms/generic-mcp-adapter.ts`
+
+---
+
+### `nr_observe_report_session_end`
+
+Report that the current AI coding session has ended.
+
+**Parameters:**
+
+| Parameter | Type   | Required | Description                            |
+| --------- | ------ | -------- | -------------------------------------- |
+| `summary` | string | No       | Brief summary of what was accomplished |
+
+**Returns:**
+
+```json
+{
+  "recorded": true,
+  "summary": "Shipped the docs-inventory checks"
+}
+```
+
+`summary` is `null` when it is not supplied.
+
+**Data source:** `GenericMcpAdapter`
+
+**How it works:** Acknowledges session completion so the client can close its loop. Session metrics are finalized by the harvest loop, not by this call.
+
+**Requires:** `GenericMcpAdapter` (always constructed on the `--stdio` path)
+
+Source: `src/tools/generic-mcp-tools.ts`, `src/platforms/generic-mcp-adapter.ts`
+
+---
+
 ## Cost Tools
 
 ### `nr_observe_report_tokens`
@@ -1788,6 +1887,38 @@ API failure tracking: per-model reliability scorecards, tokens lost, throttle al
 **Requires:** `ApiFailureTracker`
 
 Source: `src/tools/extended-analytics-tools.ts`, `src/metrics/api-failure-tracker.ts`
+
+---
+
+### `nr_observe_get_compute_waste`
+
+Total tokens wasted on retried tool calls and anti-pattern activity, with a per-pattern breakdown and a status assessment.
+
+**Parameters:** None
+
+**Returns:**
+
+```json
+{
+  "total_tokens_wasted": 12800,
+  "retry_tokens_wasted": 2400,
+  "anti_pattern_tokens_wasted": 10400,
+  "waste_ratio": 0.09,
+  "breakdown": [
+    { "type": "re_reading", "tokens_wasted": 6400, "instances": 3 },
+    { "type": "stuck_loop", "tokens_wasted": 4000, "instances": 1 }
+  ],
+  "status": "moderate"
+}
+```
+
+**Data source:** `RetryDetector` + `AntiPatternDetector`, with `CostTracker` for the ratio
+
+**How it works:** Adds `RetryDetector`'s `totalTokensWasted` to `AntiPatternDetector`'s anti-pattern waste and groups the active anti-patterns by type. `waste_ratio` is that total divided by the session's reported tokens (`null` until a token report arrives). `status` is `needs_attention` at a waste ratio of 5% or more, `moderate` at 1% or more, and `clean` below that; with no ratio yet it falls back to absolute thresholds (2,000 and 500 wasted tokens).
+
+**Requires:** `RetryDetector`, `AntiPatternDetector`; `CostTracker` for `waste_ratio`
+
+Source: `src/tools/extended-analytics-tools.ts`
 
 ---
 

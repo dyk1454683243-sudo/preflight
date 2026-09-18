@@ -268,6 +268,59 @@ If `NEW_RELIC_LICENSE_KEY`, `NEW_RELIC_ACCOUNT_ID`, or `NEW_RELIC_API_KEY` are s
 
 ---
 
+## Environment Variable Reference
+
+`loadMcpConfig()` in `src/config.ts` reads the `NEW_RELIC_AI_*` names below. Each mirrors a key in `~/.newrelic-preflight/config.json`; the environment variable wins over the file. Config priority is **CLI > environment > config file > defaults**.
+
+OTLP transport (`NEW_RELIC_AI_TRANSPORT`) and the inbound receiver use the fields in [OTLP Transport](#otlp-transport) and [Inbound OTLP Receiver](#inbound-otlp-receiver-proxy-mode). Pricing corrections (`NEW_RELIC_AI_CUSTOM_PRICING_FILE`, `NEW_RELIC_AI_COST_RATE_MULTIPLIER`, `NEW_RELIC_AI_DATA_RESIDENCY_PREMIUM`) are in [Cost / Pricing Corrections](#cost--pricing-corrections). Repository URL fields (`NEW_RELIC_AI_REPO_URL`, `NEW_RELIC_AI_REPO_URL_ENABLED`) and the content-recording switches (`NEW_RELIC_AI_MCP_RECORD_CONTENT`, `NEW_RELIC_AI_HIGH_SECURITY`, `NEW_RELIC_AI_RETAIN_SESSIONS_DAYS`) are in [PRIVACY.md](../PRIVACY.md).
+
+### Server process
+
+| Variable                              | Config key         | Default                       | What it does                                                                                                                                       |
+| ------------------------------------- | ------------------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEW_RELIC_AI_MCP_ENABLED`            | `enabled`          | `true`                        | Set to `false` to keep the server from starting — the process logs `Server disabled via config` and exits.                                         |
+| `NEW_RELIC_AI_MCP_APP_NAME`           | `appName`          | `preflight`                   | Application name attached to every event, used to tell deployments apart in New Relic.                                                             |
+| `NEW_RELIC_AI_MODEL`                  | `model`            | `claude-sonnet-4-6`           | Model identifier used for pricing and cost attribution when a session does not report its own.                                                     |
+| `NEW_RELIC_AI_MCP_STORAGE_PATH`       | `storagePath`      | `~/.newrelic-preflight`       | Directory for session files, the hook buffer, and cached data.                                                                                     |
+| `NEW_RELIC_AI_MCP_BUFFER_PATH`        | `hookBufferPath`   | `<storage path>/buffer.jsonl` | File the hook collector appends buffered events to before the server harvests them.                                                                |
+| `NEW_RELIC_AI_MCP_HARVEST_EVENTS_MS`  | `harvestEventsMs`  | `5000`                        | How often the server harvests events, in milliseconds (100–3,600,000).                                                                             |
+| `NEW_RELIC_AI_MCP_HARVEST_METRICS_MS` | `harvestMetricsMs` | `60000`                       | How often the server harvests aggregated metrics, in milliseconds (100–3,600,000).                                                                 |
+| `NEW_RELIC_AI_MCP_PORT`               | `port`             | `9847`                        | Listen port for HTTP/proxy mode.                                                                                                                   |
+| `NEW_RELIC_AI_MCP_LOG_LEVEL`          | `logLevel`         | `info`                        | Server log verbosity: `debug`, `info`, `warn`, or `error`.                                                                                         |
+| `NEW_RELIC_AI_MCP_PROXY_UPSTREAMS`    | `proxyUpstreams`   | (none)                        | JSON array of upstream MCP servers to front in proxy mode; each entry needs `name`, `transportType` (`http` or `stdio`), and a `url` or `command`. |
+
+### Identity and attribution
+
+| Variable                     | Config key  | Default                          | What it does                                                                                                                                                             |
+| ---------------------------- | ----------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NEW_RELIC_AI_MCP_DEVELOPER` | `developer` | `$USER` / git author / `unknown` | Developer identity attached to every event and used to facet cross-session tools.                                                                                        |
+| `NEW_RELIC_AI_TEAM_ID`       | `teamId`    | (unset)                          | Team label on every event. Required (with `NEW_RELIC_API_KEY`) for `nr_observe_get_team_summary`. Not your NR account ID — pick any alphanumeric slug.                   |
+| `NEW_RELIC_AI_ORG_ID`        | `orgId`     | (unset)                          | Organization identifier tagged on every event. Omitted from events if unset.                                                                                             |
+| `NEW_RELIC_AI_PROJECT_ID`    | `projectId` | inferred `org/repo`              | Project identifier tagged on every event. Auto-derived from `git remote get-url origin` when unset; set explicitly to override, or `null` in the config file to disable. |
+
+### Budgets and digests
+
+| Variable                          | Config key         | Default     | What it does                                                                                                                       |
+| --------------------------------- | ------------------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `NEW_RELIC_AI_SESSION_BUDGET_USD` | `sessionBudgetUsd` | (unset)     | Session spend cap in USD. Surfaces in `nr_observe_get_budget_status` as 50/80/100% threshold alerts.                               |
+| `NEW_RELIC_AI_DAILY_BUDGET_USD`   | `dailyBudgetUsd`   | (unset)     | Same, scoped to the local calendar day.                                                                                            |
+| `NEW_RELIC_AI_WEEKLY_BUDGET_USD`  | `weeklyBudgetUsd`  | (unset)     | Same, scoped to the ISO week.                                                                                                      |
+| `NEW_RELIC_AI_DIGEST_WEBHOOK_URL` | `digestWebhookUrl` | (unset)     | Slack incoming webhook for weekly digests. See [COMMANDS_TABLE.md](./COMMANDS_TABLE.md#nr_observe_subscribe_digest).               |
+| `NEW_RELIC_AI_DIGEST_SCHEDULE`    | `digestSchedule`   | `0 9 * * 1` | Cron expression stored for future scheduled delivery. Nothing currently reads it — call `nr_observe_send_digest` to send a digest. |
+
+### Homelab forwarding
+
+These configure the optional homelab server and the clients that forward to it. Full operator setup is in [homelab.md](./homelab.md).
+
+| Variable                            | Config key                  | Default   | What it does                         |
+| ----------------------------------- | --------------------------- | --------- | ------------------------------------ |
+| `NEW_RELIC_AI_HOMELAB_URL`          | `homelabServerUrl`          | (unset)   | URL of the homelab ingest server     |
+| `NEW_RELIC_AI_HOMELAB_TOKEN`        | `homelabToken`              | (unset)   | Shared bearer token the client sends |
+| `NEW_RELIC_AI_HOMELAB_SERVER_PORT`  | `homelabServer.port`        | `7777`    | Port the homelab server binds        |
+| `NEW_RELIC_AI_HOMELAB_BIND_ADDRESS` | `homelabServer.bindAddress` | `0.0.0.0` | Bind address for the homelab server  |
+
+---
+
 ## Running `--local` Standalone (No `--stdio` Session)
 
 The subagent transcript watcher runs in both `--stdio` and `--local` processes. A `--stdio` process watches only its own session; a `--local` process watches every session that does not already have a live `--stdio` owner, so a standalone deployment (container, systemd unit, Raspberry Pi, any platform with no MCP client to auto-launch `--stdio`) tracks subagent cost with no configuration. Set `NR_AI_ENABLE_SUBAGENT_WATCHER=0` to turn it off everywhere.
