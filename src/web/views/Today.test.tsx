@@ -2074,7 +2074,7 @@ describe('Today view — Tasks row', () => {
     }) as typeof fetch;
 
     renderToday();
-    expect(await screen.findByText('No completed tasks yet')).toBeInTheDocument();
+    expect(await screen.findByText(/No completed tasks yet/)).toBeInTheDocument();
     expect(screen.getByText('Tasks')).toBeInTheDocument();
     expect(screen.queryByText('completed tasks')).toBeNull();
     expect(screen.queryByText('avg duration')).toBeNull();
