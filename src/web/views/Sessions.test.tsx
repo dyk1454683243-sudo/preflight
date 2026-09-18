@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Sessions } from './Sessions';
@@ -566,6 +567,38 @@ describe('Sessions view — real API shapes', () => {
     expect(screen.getByText('Read')).toBeInTheDocument();
     expect(screen.getByText('Edit')).toBeInTheDocument();
     expect(screen.getByText('Write')).toBeInTheDocument();
+  });
+
+  it('copies the selected session as Markdown and JSON from the detail panel', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const detailWithBreakdownOnly = {
+      sessionId: 'abc-123',
+      sessionName: 'preflight',
+      durationMs: 198332,
+      toolCallCount: 28,
+      model: 'claude-sonnet-4-6',
+      toolBreakdown: { Bash: 12, Read: 13, Edit: 2, Write: 1 },
+      filesRead: ['src/foo.ts'],
+      filesModified: ['src/bar.ts'],
+      estimatedCostUsd: 0.42,
+      outcome: 'feature',
+    };
+    renderSessions(REAL_API_LIST, { 'abc-123': detailWithBreakdownOnly });
+    const markdownButton = await screen.findByRole('button', { name: 'Copy Markdown' });
+    fireEvent.click(markdownButton);
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const markdown = writeText.mock.calls[0]![0] as string;
+    expect(markdown).toContain('### Session: preflight');
+    expect(markdown).toContain('Files touched: 1 read, 1 written');
+    expect(markdown).not.toContain('src/foo.ts');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy JSON' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+    const json = writeText.mock.calls[1]![0] as string;
+    expect(json).toContain('"sessionId": "abc-123"');
+    expect(json).not.toContain('src/foo.ts');
+    expect(json).not.toContain('filesRead');
   });
 
   it('renders without crashing when session detail has no toolCalls and no toolBreakdown', async () => {
