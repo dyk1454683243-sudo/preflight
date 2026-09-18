@@ -5651,7 +5651,11 @@ describe('api-handler GET /api/digest/preview', () => {
     const configFilePath = makeConfigFile({
       digestWebhookUrl: 'https://hooks.slack.com/services/T/B/X',
     });
-    const fetchMock = jest.fn(async () => ({ ok: true, status: 200 }));
+    const postedBodies: string[] = [];
+    const fetchMock = jest.fn(async (_url: string, init?: RequestInit) => {
+      if (typeof init?.body === 'string') postedBodies.push(init.body);
+      return { ok: true, status: 200 };
+    });
     global.fetch = fetchMock as unknown as typeof fetch;
     const handler = createApiHandler({
       configFilePath,
@@ -5679,8 +5683,8 @@ describe('api-handler GET /api/digest/preview', () => {
     await handler(sendReq, send.res);
     expect(send.status()).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const posted = JSON.parse(String((fetchMock.mock.calls[0]![1] as { body: string }).body));
-    expect(posted).toEqual(previewBody.payload);
+    expect(postedBodies).toHaveLength(1);
+    expect(JSON.parse(postedBodies[0]!)).toEqual(previewBody.payload);
   });
 });
 
