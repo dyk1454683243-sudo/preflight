@@ -1856,7 +1856,7 @@ Register a Slack webhook URL to receive weekly AI coding cost and efficiency sum
 ```json
 {
   "ok": true,
-  "message": "Webhook registered. Delivery is manual — call nr_observe_send_digest to send this week's digest."
+  "message": "Webhook registered. A --local daemon delivers on digestSchedule (default Monday 9am local). Call nr_observe_send_digest to send immediately."
 }
 ```
 
@@ -1871,9 +1871,9 @@ Register a Slack webhook URL to receive weekly AI coding cost and efficiency sum
 **Config fields:**
 
 - `NEW_RELIC_AI_DIGEST_WEBHOOK_URL` — Slack incoming webhook endpoint
-- `NEW_RELIC_AI_DIGEST_SCHEDULE` — cron expression for digest delivery (default: `"0 9 * * 1"`)
+- `NEW_RELIC_AI_DIGEST_SCHEDULE` — 5-field cron expression for digest delivery (default: `"0 9 * * 1"`, Monday 09:00 in the server's local timezone). Invalid expressions fail config load.
 
-**Note:** Digest delivery is manual-only today. `digestSchedule`/`NEW_RELIC_AI_DIGEST_SCHEDULE` is stored for future use but nothing currently reads it to trigger a send — call `nr_observe_send_digest` on-demand (e.g. from an external cron job or CI schedule) to actually deliver a digest.
+**Note:** A `preflight --local` daemon honors `digestSchedule` and POSTs the same weekly summary `nr_observe_send_digest` produces. `--stdio` does not schedule (a per-session engine is the wrong lifetime). You can still call `nr_observe_send_digest` on-demand.
 
 **Requires:** `configFilePath`
 
@@ -1933,6 +1933,8 @@ Generate the current weekly AI coding summary and POST it to the configured Slac
 2. Generates the current week's summary via `WeeklySummaryGenerator`
 3. Formats a Slack Block Kit payload via `formatSlackDigest()`
 4. POSTs the payload to the webhook URL
+
+The `--local` digest scheduler uses this same path when `digestSchedule` matches.
 
 **Requires:** `configFilePath` + `WeeklySummaryGenerator`
 

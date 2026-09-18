@@ -196,7 +196,8 @@ export default {
   // Env: NEW_RELIC_AI_DIGEST_WEBHOOK_URL
   digestWebhookUrl: 'https://hooks.slack.com/services/TXXXXXXXX/BXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXX',
 
-  // Cron expression for digest delivery schedule (server's local timezone).
+  // 5-field cron for digest delivery (server's local timezone).
+  // Honored by `preflight --local`; invalid expressions fail config load.
   // Env: NEW_RELIC_AI_DIGEST_SCHEDULE
   // Default: "0 9 * * 1" (Monday 9am)
   digestSchedule: '0 9 * * 1',

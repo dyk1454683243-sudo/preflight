@@ -266,7 +266,7 @@ export function Alerts(): JSX.Element {
       <Card padding="md">
         <SectionHeader
           title="Slack Digest"
-          subtitle="Weekly digest sent to a Slack incoming webhook. URL changes take effect immediately."
+          subtitle="Weekly digest sent to a Slack incoming webhook. A --local daemon delivers on the cron schedule (server local time). URL and schedule changes take effect immediately."
         />
 
         {settingsQ.isLoading && <EmptyState icon="clock" variant="loading" title="Loading..." />}
@@ -294,9 +294,7 @@ export function Alerts(): JSX.Element {
             <div className="flex items-center gap-3 py-1.5">
               <label className="text-xs text-ink-muted w-28 shrink-0">
                 Schedule
-                <span className="block text-[10px] text-ink-muted font-normal">
-                  (cron, restart req.)
-                </span>
+                <span className="block text-[10px] text-ink-muted font-normal">(cron)</span>
               </label>
               <input
                 type="text"

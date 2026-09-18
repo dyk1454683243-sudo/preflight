@@ -975,7 +975,7 @@ export function handleSubscribeDigest(
           text: JSON.stringify({
             ok: true,
             message:
-              "Webhook registered. Delivery is manual — call nr_observe_send_digest to send this week's digest.",
+              'Webhook registered. A --local daemon delivers on digestSchedule (default Monday 9am local). Call nr_observe_send_digest to send immediately.',
           }),
         },
       ],

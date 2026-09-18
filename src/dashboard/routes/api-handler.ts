@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import type { McpServerConfig } from '../../config.js';
 import { normalizeDeveloperName, redactSensitive } from '../../config.js';
+import { parseDigestSchedule } from '../../digest/cron.js';
 import {
   isSyntheticSessionId,
   isUnscopedAggregatorSessionId,
@@ -2970,14 +2971,16 @@ export function createApiHandler(
     }
 
     const errors: string[] = [];
-    let digestUrlOnly = true; // tracks whether only digest URL changed
+    // Digest webhook + schedule are re-read at send / scheduler-tick time,
+    // so changing only those fields does not require a process restart.
+    let digestLiveOnly = true;
 
     if ('developer' in body) {
       if (typeof body.developer !== 'string') {
         errors.push('developer must be a string');
       } else {
         existing.developer = normalizeDeveloperName(body.developer);
-        digestUrlOnly = false;
+        digestLiveOnly = false;
       }
     }
     if ('teamId' in body) {
@@ -2985,7 +2988,7 @@ export function createApiHandler(
         errors.push('teamId must be string or null');
       } else {
         existing.teamId = body.teamId;
-        digestUrlOnly = false;
+        digestLiveOnly = false;
       }
     }
     if ('sessionBudgetUsd' in body) {
@@ -2996,7 +2999,7 @@ export function createApiHandler(
         errors.push('sessionBudgetUsd must be a positive number or null');
       } else {
         existing.sessionBudgetUsd = body.sessionBudgetUsd;
-        digestUrlOnly = false;
+        digestLiveOnly = false;
       }
     }
     if ('dailyBudgetUsd' in body) {
@@ -3007,7 +3010,7 @@ export function createApiHandler(
         errors.push('dailyBudgetUsd must be a positive number or null');
       } else {
         existing.dailyBudgetUsd = body.dailyBudgetUsd;
-        digestUrlOnly = false;
+        digestLiveOnly = false;
       }
     }
     if ('weeklyBudgetUsd' in body) {
@@ -3018,7 +3021,7 @@ export function createApiHandler(
         errors.push('weeklyBudgetUsd must be a positive number or null');
       } else {
         existing.weeklyBudgetUsd = body.weeklyBudgetUsd;
-        digestUrlOnly = false;
+        digestLiveOnly = false;
       }
     }
     if ('retainSessionsDays' in body) {
@@ -3031,7 +3034,7 @@ export function createApiHandler(
         errors.push('retainSessionsDays must be integer 1-365 or null');
       } else {
         existing.retainSessionsDays = body.retainSessionsDays;
-        digestUrlOnly = false;
+        digestLiveOnly = false;
       }
     }
     if ('digestWebhookUrl' in body) {
@@ -3054,8 +3057,14 @@ export function createApiHandler(
       if (typeof body.digestSchedule !== 'string') {
         errors.push('digestSchedule must be a string');
       } else {
-        existing.digestSchedule = body.digestSchedule;
-        digestUrlOnly = false;
+        try {
+          parseDigestSchedule(body.digestSchedule);
+          existing.digestSchedule = body.digestSchedule;
+        } catch (err) {
+          errors.push(
+            err instanceof Error ? err.message : 'digestSchedule is not a valid cron expression',
+          );
+        }
       }
     }
     if ('alerts' in body) {
@@ -3111,7 +3120,7 @@ export function createApiHandler(
         }
         existingAlerts['personal'] = existingPersonal;
         existing.alerts = existingAlerts;
-        digestUrlOnly = false;
+        digestLiveOnly = false;
       }
     }
 
@@ -3122,7 +3131,7 @@ export function createApiHandler(
     }
 
     writeFileSync(deps.configFilePath, JSON.stringify(existing, null, 2), { mode: 0o600 });
-    jsonOk(res, { ok: true, restartRequired: !digestUrlOnly });
+    jsonOk(res, { ok: true, restartRequired: !digestLiveOnly });
   });
 
   routes.set('POST /api/digest/send', async (_req, res) => {

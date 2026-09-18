@@ -102,7 +102,7 @@ preflight/
     tracing/       # OTel span lifecycle
     transport/     # NR ingest manager + log ingest
     platforms/     # one adapter per supported platform (see docs/ADAPTERS.md) + generic MCP fallback
-    digest/        # Slack digest formatter and sender
+    digest/        # Slack digest formatter, sender, and --local cron scheduler
     install/       # preflight install / setup CLI
     alerts/        # Alert TS types (JSON files live in alerts/ at repo root)
     deploy/        # `deploy-dashboards` and `deploy-alerts` subcommands

@@ -5187,6 +5187,45 @@ describe('api-handler PATCH /api/settings', () => {
     });
   });
 
+  it('rejects an invalid cron digestSchedule', async () => {
+    const configFilePath = makeConfigFilePath({});
+    const handler = createApiHandler({ configFilePath });
+    const req = makePatchRequest({ digestSchedule: 'every monday' });
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(400);
+    const parsed = JSON.parse(body()) as { error: string; errors: string[] };
+    expect(parsed.error).toBe('validation_failed');
+    expect(parsed.errors[0]).toMatch(/Invalid digestSchedule 'every monday'/);
+  });
+
+  it('sets restartRequired: false when only digestSchedule changes', async () => {
+    const configFilePath = makeConfigFilePath({});
+    const handler = createApiHandler({ configFilePath });
+    const req = makePatchRequest({ digestSchedule: '30 8 * * 2' });
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    expect(JSON.parse(body())).toEqual({ ok: true, restartRequired: false });
+    const written = JSON.parse(fs.readFileSync(configFilePath, 'utf-8')) as {
+      digestSchedule: string;
+    };
+    expect(written.digestSchedule).toBe('30 8 * * 2');
+  });
+
+  it('sets restartRequired: false when webhook and schedule change together', async () => {
+    const configFilePath = makeConfigFilePath({});
+    const handler = createApiHandler({ configFilePath });
+    const req = makePatchRequest({
+      digestWebhookUrl: 'https://hooks.slack.com/services/T/B/X',
+      digestSchedule: '0 8 * * 1',
+    });
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    expect(JSON.parse(body())).toEqual({ ok: true, restartRequired: false });
+  });
+
   it('validates alerts.personal.* fields, merging into any existing personal thresholds', async () => {
     const configFilePath = makeConfigFilePath({
       alerts: { personal: { dailyCostUsd: 5, sessionCostUsd: 1 } },
