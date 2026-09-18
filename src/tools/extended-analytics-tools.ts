@@ -10,6 +10,7 @@
  *   - nr_observe_get_tool_selection_score — tool selection quality score
  *   - nr_observe_get_quality_proxy — quality signal tracking and degradation
  *   - nr_observe_get_api_failures — API failure events and model reliability
+ *   - nr_observe_get_compute_waste — tokens wasted on retries and anti-patterns
  */
 
 import type { ToolCallRecord } from '../storage/types.js';
