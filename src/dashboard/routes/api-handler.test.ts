@@ -4828,23 +4828,24 @@ describe('api-handler GET /api/concurrency (96-bucket grid)', () => {
     expect(result.dailyPeaks[2].date).toBe(localDateKey());
   });
 
-  it('keys dailyPeaks correctly across a DST transition, where a local day is 23h (not 86_400_000ms)', async () => {
-    const originalTz = process.env.TZ;
-    process.env.TZ = 'America/New_York';
+  it('keys dailyPeaks by local midnight via setDate, not a fixed 86_400_000ms step', async () => {
     jest.useFakeTimers();
     try {
-      // 2026-03-08 is a "spring forward" DST transition day in
-      // America/New_York — local midnight to local midnight is only 23 real
-      // hours (82_800_000ms), not 86_400_000ms.
-      const mar8Start = new Date(2026, 2, 8, 0, 0, 0).getTime();
-      const mar9Start = mar8Start + 23 * 60 * 60_000;
-      // "Today" = March 9 mid-afternoon, so days=3 covers Mar 7, 8, 9.
-      jest.setSystemTime(new Date(mar9Start + 15 * 60 * 60_000));
+      // Afternoon local on 2026-03-09. In America/New_York this is the day
+      // after a 23h spring-forward; in UTC / Asia/Tokyo it is a normal 24h
+      // day. Jest's fake Date captures the process-start zone and ignores
+      // later `process.env.TZ` writes, so fixtures must come from
+      // localStartOfDay (same helper production uses) rather than a
+      // hardcoded 23h offset that only holds in New York.
+      jest.setSystemTime(new Date(2026, 2, 9, 15, 0, 0));
+      const todayStart = localStartOfDay();
+      const yesterdayStart = localStartOfDay(todayStart - 12 * 60 * 60_000);
 
-      // Two overlapping sessions active 30 minutes into March 9 local time —
-      // after the *correct* boundary (mar9Start) but still before the
-      // *buggy* one (mar8Start + 86_400_000 = mar9Start + 1h).
-      const overlapTs = mar9Start + 30 * 60_000;
+      // Two overlapping sessions 30 minutes into today — after the true
+      // local midnight, which is also the instant a naive
+      // `yesterdayStart + 86_400_000` would still call "yesterday" on a
+      // 23h DST-shortened day.
+      const overlapTs = todayStart + 30 * 60_000;
       const sessions = [
         { sessionId: 's1', timeline: [{ timestamp: overlapTs }] },
         { sessionId: 's2', timeline: [{ timestamp: overlapTs }] },
@@ -4868,25 +4869,13 @@ describe('api-handler GET /api/concurrency (96-bucket grid)', () => {
       await handler(req, res);
       expect(status()).toBe(200);
       const result = JSON.parse(body());
-      // 3-day window [Mar7, Mar8, Mar9] → indices [0, 1, 2].
-      expect(result.dailyPeaks[1].date).toBe('2026-03-08');
-      expect(result.dailyPeaks[2].date).toBe('2026-03-09');
-      // A naive `dayEndMs = mar8Start + 86_400_000` (March 9 01:00 local —
-      // an hour past the true DST-shortened boundary) would wrongly
-      // attribute this overlap to March 8 instead of 9.
+      // 3-day window ending today → indices [0, 1, 2] = [2 days ago, yesterday, today].
+      expect(result.dailyPeaks[1].date).toBe(localDateKey(yesterdayStart));
+      expect(result.dailyPeaks[2].date).toBe(localDateKey(todayStart));
       expect(result.dailyPeaks[1].peak).toBe(0);
       expect(result.dailyPeaks[2].peak).toBe(2);
     } finally {
       jest.useRealTimers();
-      // `process.env.TZ = undefined` coerces to the literal string
-      // "undefined" (env vars are always strings), which then makes
-      // `Intl.DateTimeFormat().resolvedOptions().timeZone` resolve to
-      // "undefined" and silently breaks local-time computation for every
-      // later test in this Jest worker (maxWorkers: 1) — including this
-      // file's own local-vs-UTC tests. Delete the key outright when TZ was
-      // never set, rather than assigning `undefined` to it.
-      if (originalTz === undefined) delete process.env.TZ;
-      else process.env.TZ = originalTz;
     }
   });
 

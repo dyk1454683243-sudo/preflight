@@ -38,8 +38,17 @@ npm test                                         # Entire Jest suite
 npx jest -- src/shared/                          # All tests under one directory
 npx jest -- src/metrics/cost-tracker.test.ts     # One file
 npx jest -- --testNamePattern="re-queues"        # Tests matching a name pattern
+TZ=UTC npm test                                  # Must pass (CI runner default)
+TZ=Asia/Tokyo npm test                           # Must pass (non-UTC, non-US zone)
 ```
 
+### Timezone independence
+
+Do not assume the host timezone is `America/New_York` (or any other zone). Build date fixtures from `localStartOfDay()` / `localDateKey()`, or from explicit UTC instants (`Date.UTC`, ISO strings ending in `Z`).
+
+Do not assign `process.env.TZ` inside a test that also uses Jest fake timers. The fake `Date` constructor captures the process-start zone and ignores later `TZ` writes, so a runtime pin is a no-op on a UTC runner.
+
+CI does not pin `TZ`. Both `TZ=UTC npm test` and `TZ=Asia/Tokyo npm test` must pass.
 ---
 
 ## Web Tests (Vitest)
