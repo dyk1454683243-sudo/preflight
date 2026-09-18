@@ -30,10 +30,10 @@ describe('CostEstimateMarker', () => {
 
     fireEvent.focus(trigger);
     const tooltip = screen.getByRole('tooltip');
-    expect(tooltip).toHaveTextContent('public list price');
-    expect(tooltip).toHaveTextContent('not the whole org');
-    expect(tooltip).toHaveTextContent('Cache-write tokens');
-    expect(tooltip).toHaveTextContent('Billing runs behind');
+    expect(tooltip).toHaveTextContent(COST_ESTIMATE_HEADING);
+    for (const reason of COST_ESTIMATE_REASONS) {
+      expect(tooltip).toHaveTextContent(reason.detail);
+    }
 
     fireEvent.blur(trigger);
     expect(screen.queryByRole('tooltip')).toBeNull();
