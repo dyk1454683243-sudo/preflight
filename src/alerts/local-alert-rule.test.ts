@@ -24,9 +24,8 @@ describe('localAlertRuleSchema — valid rules', () => {
     expect(parsed.type).toBe('cost.window');
     if (parsed.type === 'cost.window') {
       expect(parsed.windowSeconds).toBe(3600);
-      // costPeriod default is 'session' — the snapshot collector only
-      // populates sessionUsd, so a rule that omits costPeriod defaults to
-      // the only working period.
+      // costPeriod default is 'session' — sessionUsd is always available
+      // from costTracker; today/week require a budgetTracker dep.
       expect(parsed.costPeriod).toBe('session');
     }
     expect(parsed.enabled).toBe(true); // default
