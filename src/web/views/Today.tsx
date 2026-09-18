@@ -28,6 +28,7 @@ import {
   type ModelShareRow,
 } from '../components/UsageContributionPanel';
 import { AttentionList, type AttentionRow } from '../components/AttentionList';
+import { BudgetMeter } from '../components/BudgetMeter';
 import { Card, Eyebrow, InfoTooltip, LiveBadge, Pill } from '../components/ui';
 import {
   fetchRecentAlerts,
@@ -62,6 +63,10 @@ import {
   fetchTodayAggregate,
   fetchObservabilityHealth,
   fetchUsageInsights,
+  fetchBudget,
+  fetchSettings,
+  type BudgetStatus,
+  type SettingsResponse,
   TodayAggregateResponse,
   ActivityHeatmapTodayResponse,
   LiveSessionEntry,
@@ -236,6 +241,23 @@ export function Today(): JSX.Element {
     queryFn: ({ signal }) => fetchCost(signal),
     refetchInterval: 10_000,
   });
+  // Same query key and fetch as Alerts — do not introduce a second budget path.
+  const { data: budget } = useQuery<BudgetStatus>({
+    queryKey: qk.budget,
+    queryFn: ({ signal }) => fetchBudget(signal),
+    refetchInterval: 10_000,
+  });
+  const { data: settings } = useQuery<SettingsResponse>({
+    queryKey: qk.settings,
+    queryFn: ({ signal }) => fetchSettings(signal),
+    refetchInterval: 10_000,
+  });
+  const dailyBudget = budget?.daily ?? {
+    budgetUsd: null,
+    spentUsd: 0,
+    pctUsed: null,
+    exceeded: false,
+  };
   const { data: aggregate, isPending: aggregatePending } = useQuery<TodayAggregateResponse>({
     queryKey: qk.sessionsTodayAggregate,
     queryFn: ({ signal }) => fetchTodayAggregate(signal),
@@ -416,6 +438,8 @@ export function Today(): JSX.Element {
         <h1 className="text-xl font-semibold gradient-text">Today</h1>
         <span className="text-xs text-ink-muted">{headerTimestamp}</span>
       </header>
+
+      <BudgetMeter daily={dailyBudget} reported={settings?.reportedSpend ?? null} />
 
       {noActivityToday ? (
         <>

@@ -10,8 +10,11 @@ import {
   qk,
   type DiagnosticCheck,
   type ObservabilityHealthResponse,
+  type ReportedSpendInput,
+  type ReportedSpendPeriodKind,
 } from '../api/client';
 import type { SettingsPatch } from '../api/client';
+import { formatReportedAsOf } from '../components/BudgetMeter';
 import { EmptyState } from '../components/EmptyState';
 import { Button, Card, Eyebrow, SectionHeader } from '../components/ui';
 
@@ -27,6 +30,11 @@ interface SettingsData {
   readonly sessionBudgetUsd: number | null;
   readonly dailyBudgetUsd: number | null;
   readonly weeklyBudgetUsd: number | null;
+  readonly reportedSpend: {
+    readonly periodKind: ReportedSpendPeriodKind;
+    readonly amountUsd: number;
+    readonly asOf: string;
+  } | null;
   readonly retainSessionsDays: number | null;
 }
 
@@ -172,8 +180,15 @@ export function Settings(): JSX.Element {
   const [dailyBudget, setDailyBudget] = useState<number | null | undefined>(undefined);
   const [weeklyBudget, setWeeklyBudget] = useState<number | null | undefined>(undefined);
   const [retainDays, setRetainDays] = useState<number | null | undefined>(undefined);
+  const [reportedSpend, setReportedSpend] = useState<ReportedSpendInput | null | undefined>(
+    undefined,
+  );
+  const [reportedPeriodKind, setReportedPeriodKind] = useState<ReportedSpendPeriodKind | undefined>(
+    undefined,
+  );
 
   const [saved, setSaved] = useState<'identity' | 'budgets' | null>(null);
+  const [restartNeeded, setRestartNeeded] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const mutation = useMutation({
@@ -197,6 +212,16 @@ export function Settings(): JSX.Element {
   const effectiveDaily = dailyBudget !== undefined ? dailyBudget : data.dailyBudgetUsd;
   const effectiveWeekly = weeklyBudget !== undefined ? weeklyBudget : data.weeklyBudgetUsd;
   const effectiveRetain = retainDays !== undefined ? retainDays : data.retainSessionsDays;
+  const effectiveReported =
+    reportedSpend !== undefined
+      ? reportedSpend
+      : data.reportedSpend
+        ? { periodKind: data.reportedSpend.periodKind, amountUsd: data.reportedSpend.amountUsd }
+        : null;
+  const reportedAsOf = data.reportedSpend?.asOf ?? null;
+  const reportedPeriod: ReportedSpendPeriodKind =
+    reportedPeriodKind ?? effectiveReported?.periodKind ?? 'daily';
+  const reportedAmount = effectiveReported?.amountUsd ?? null;
 
   function saveIdentity() {
     const patch: SettingsPatch = {};
@@ -216,18 +241,49 @@ export function Settings(): JSX.Element {
     if (dailyBudget !== undefined) patch.dailyBudgetUsd = dailyBudget;
     if (weeklyBudget !== undefined) patch.weeklyBudgetUsd = weeklyBudget;
     if (retainDays !== undefined) patch.retainSessionsDays = retainDays;
+    if (reportedSpend !== undefined) {
+      patch.reportedSpend =
+        reportedSpend === null
+          ? null
+          : { periodKind: reportedPeriod, amountUsd: reportedSpend.amountUsd };
+    } else if (reportedPeriodKind !== undefined && data.reportedSpend) {
+      patch.reportedSpend = {
+        periodKind: reportedPeriodKind,
+        amountUsd: data.reportedSpend.amountUsd,
+      };
+    }
     mutation.mutate(patch, {
-      onSuccess: () => {
+      onSuccess: (res) => {
         setSaved('budgets');
+        setRestartNeeded(res.restartRequired);
         setTimeout(() => setSaved(null), 3000);
       },
     });
   }
 
+  function clearReportedSpend() {
+    setReportedSpend(null);
+    setReportedPeriodKind(undefined);
+    mutation.mutate(
+      { reportedSpend: null },
+      {
+        onSuccess: () => {
+          setSaved('budgets');
+          setRestartNeeded(false);
+          setTimeout(() => setSaved(null), 3000);
+        },
+      },
+    );
+  }
+
   const restartBanner = (which: 'identity' | 'budgets') =>
     saved === which ? (
-      <div className="mt-2 text-xs text-accent-amber">
-        Saved. Restart the server for changes to take effect.
+      <div
+        className={`mt-2 text-xs ${which === 'budgets' && !restartNeeded ? 'text-accent-green' : 'text-accent-amber'}`}
+      >
+        {which === 'budgets' && !restartNeeded
+          ? 'Saved.'
+          : 'Saved. Restart the server for changes to take effect.'}
       </div>
     ) : null;
 
@@ -326,6 +382,61 @@ export function Settings(): JSX.Element {
           placeholder="forever"
           min={1}
         />
+
+        <div className="flex items-center gap-3 py-1.5">
+          <label className="text-xs text-ink-muted w-36 shrink-0" htmlFor="reported-spend-amount">
+            {reportedPeriod === 'weekly' ? 'Reported spend this week' : 'Reported spend today'}
+          </label>
+          <select
+            aria-label="Reported spend period"
+            value={reportedPeriod}
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw !== 'daily' && raw !== 'weekly') return;
+              setReportedPeriodKind(raw);
+              if (reportedAmount != null) {
+                setReportedSpend({ periodKind: raw, amountUsd: reportedAmount });
+              }
+            }}
+            className="text-xs bg-surface-3 border border-border-subtle rounded-md px-2 py-1 focus:outline-none focus:border-accent-green text-ink-base"
+          >
+            <option value="daily">Today</option>
+            <option value="weekly">This week</option>
+          </select>
+          <input
+            id="reported-spend-amount"
+            type="number"
+            min={0}
+            step="any"
+            value={reportedAmount ?? ''}
+            placeholder="org-reported USD"
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw === '') {
+                setReportedSpend(null);
+                return;
+              }
+              setReportedSpend({
+                periodKind: reportedPeriod,
+                amountUsd: Number(raw),
+              });
+            }}
+            className="text-xs bg-surface-3 border border-border-subtle rounded-md px-2 py-1 w-32 focus:outline-none focus:border-accent-green text-ink-base placeholder:text-ink-muted"
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearReportedSpend}
+            disabled={mutation.isPending || (reportedAmount == null && reportedAsOf == null)}
+          >
+            Clear
+          </Button>
+        </div>
+        {reportedAsOf && reportedSpend !== null && (
+          <div className="text-[10px] text-ink-muted pl-[9.5rem]">
+            as of {formatReportedAsOf(reportedAsOf)}
+          </div>
+        )}
 
         <div className="mt-3 flex items-center gap-3">
           <Button

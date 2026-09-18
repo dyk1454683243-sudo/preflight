@@ -24,3 +24,10 @@ export type { SectionHeaderProps } from './SectionHeader';
 
 export { InfoTooltip } from './InfoTooltip';
 export type { InfoTooltipProps } from './InfoTooltip';
+
+export {
+  CostEstimateMarker,
+  COST_ESTIMATE_HEADING,
+  COST_ESTIMATE_REASONS,
+} from './CostEstimateMarker';
+export type { CostEstimateReason } from './CostEstimateMarker';
