@@ -749,6 +749,12 @@ function processHook(raw) {
       mode: "stop",
       timestamp
     };
+  } else if (eventName === "sessionend") {
+    event = {
+      mode: "session_end",
+      timestamp,
+      ...typeof data.reason === "string" && { reason: data.reason }
+    };
   } else {
     return;
   }

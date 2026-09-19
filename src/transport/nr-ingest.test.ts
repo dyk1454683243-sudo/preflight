@@ -29,6 +29,7 @@ import type { ThrashingAlert } from '../metrics/retry-detector.js';
 import type { ClosedTurn, TurnCostAttribution } from '../metrics/turn-cost-attributor.js';
 import type { ContextTurnSnapshot, ToolContextContribution } from '../metrics/context-tracker.js';
 import { SessionTracker } from '../metrics/session-tracker.js';
+import { EngagedTimeTracker } from '../metrics/engaged-time-tracker.js';
 import { CostTracker } from '../metrics/cost-tracker.js';
 import { GitEfficiencyTracker } from '../metrics/git-efficiency-tracker.js';
 import { FeedbackCollector } from '../tools/workflow-tools.js';
@@ -941,6 +942,29 @@ describe('NrIngestManager', () => {
       expect(metricNames).toContain('ai.session.unique_files_written');
     });
 
+    it('emits ai.session.engaged_ms beside duration_ms when an EngagedTimeTracker is wired', async () => {
+      const sessionTracker = new SessionTracker('engaged-gauge-session');
+      const engagedTimeTracker = new EngagedTimeTracker();
+      engagedTimeTracker.recordPromptSubmit(0);
+      engagedTimeTracker.recordStop(3_000);
+
+      const manager = new NrIngestManager(
+        makeIngestOptions({ sessionTracker, engagedTimeTracker }),
+      );
+
+      manager.start();
+      await manager.stop();
+
+      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
+      const metricNames = sentMetrics.map((m) => m.name);
+      expect(metricNames).toContain('ai.session.duration_ms');
+      expect(metricNames).toContain('ai.session.engaged_ms');
+      const engaged = sentMetrics.find((m) => m.name === 'ai.session.engaged_ms');
+      expect(engaged?.value).toBe(3_000);
+    });
+
     it('skips ai.session.* gauges when trackSessionGauges is false (proxy mode)', async () => {
       const sessionTracker = new SessionTracker('proxy-gauge-session');
       sessionTracker.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/a.ts' }));
@@ -961,6 +985,7 @@ describe('NrIngestManager', () => {
       const metricNames = sentMetrics.map((m) => m.name);
 
       expect(metricNames).not.toContain('ai.session.duration_ms');
+      expect(metricNames).not.toContain('ai.session.engaged_ms');
       expect(metricNames).not.toContain('ai.session.unique_files_read');
       expect(metricNames).not.toContain('ai.session.unique_files_written');
     });

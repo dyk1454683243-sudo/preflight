@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer, NrMcpServer } from '../server.js';
 import { SessionTracker } from '../metrics/session-tracker.js';
+import { EngagedTimeTracker } from '../metrics/engaged-time-tracker.js';
 import { CostTracker } from '../metrics/cost-tracker.js';
 import { BudgetTracker } from '../metrics/budget-tracker.js';
 import { ContextWindowTracker } from '../metrics/context-window-tracker.js';
@@ -102,6 +103,7 @@ describe('handleGetSessionStats()', () => {
 
     expect(stats.session_id).toBe(metrics.sessionId);
     expect(stats.session_duration_ms).toBeGreaterThanOrEqual(0);
+    expect(stats.session_engaged_ms).toBeUndefined();
     expect(stats.tool_calls).toBe(metrics.toolCallCount);
     expect(stats.tool_calls_by_type).toEqual(metrics.toolCallCountByTool);
     expect(stats.success_rate).toBe(metrics.toolSuccessRate);
@@ -129,6 +131,18 @@ describe('handleGetSessionStats()', () => {
     const stats = JSON.parse(result.content[0].text);
 
     expect(stats.bash_calls_by_category).toEqual({ git: 2, 'test-runner': 1 });
+  });
+
+  it('includes session_engaged_ms beside wall-clock duration when the accumulator is wired', () => {
+    const tracker = new SessionTracker('engaged-stats');
+    const engaged = new EngagedTimeTracker();
+    engaged.recordPromptSubmit(0);
+    engaged.recordStop(7_500);
+
+    const stats = JSON.parse(handleGetSessionStats(tracker, undefined, engaged).content[0].text);
+
+    expect(stats.session_duration_ms).toBeGreaterThanOrEqual(0);
+    expect(stats.session_engaged_ms).toBe(7_500);
   });
 
   it('returns zero avg_tool_duration_ms when no durations recorded', () => {

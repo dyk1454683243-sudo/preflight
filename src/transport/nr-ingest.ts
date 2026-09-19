@@ -32,6 +32,7 @@ import type { WorkflowRunMetrics } from '../metrics/workflow-run-tracker.js';
 import type { AntiPattern } from '../metrics/anti-patterns.js';
 import type { ThrashingAlert } from '../metrics/retry-detector.js';
 import type { SessionTracker } from '../metrics/session-tracker.js';
+import type { EngagedTimeTracker } from '../metrics/engaged-time-tracker.js';
 import type { CostTracker } from '../metrics/cost-tracker.js';
 import type { GitEfficiencyTracker } from '../metrics/git-efficiency-tracker.js';
 import type { EfficiencyScorer } from '../metrics/efficiency-score.js';
@@ -126,6 +127,11 @@ export interface NrIngestOptions {
   transport?: 'nr-events-api' | 'otlp' | 'both';
   /** Turn cost attributor for enriching AiToolCall events with cost data. */
   turnCostAttributor?: TurnCostAttributor;
+  /**
+   * Gap-coalescing engaged-time accumulator. When present, `emitSessionGauges()`
+   * records `ai.session.engaged_ms` beside wall-clock `ai.session.duration_ms`.
+   */
+  engagedTimeTracker?: EngagedTimeTracker;
   /**
    * Whether `emitSessionGauges()` should emit the `ai.session.duration_ms` /
    * `unique_files_read` / `unique_files_written` gauges. Default true.
@@ -1026,6 +1032,7 @@ export class NrIngestManager {
   private readonly repoUrl: string | null | undefined;
   private readonly metricHarvestIntervalMs: number;
   private readonly turnCostAttributor?: TurnCostAttributor;
+  private readonly engagedTimeTracker?: EngagedTimeTracker;
   private readonly otlpTransport: OtlpTransport | null;
   private readonly otlpEventBridge: OtlpEventBridge | null;
   private readonly trackSessionGauges: boolean;
@@ -1052,6 +1059,7 @@ export class NrIngestManager {
     this.apiFailureTracker = options.apiFailureTracker;
     this.gitEfficiencyTracker = options.gitEfficiencyTracker;
     this.turnCostAttributor = options.turnCostAttributor;
+    this.engagedTimeTracker = options.engagedTimeTracker;
     this.auditTrail =
       options.auditTrail ??
       new AuditTrailManager({
@@ -1703,6 +1711,11 @@ export class NrIngestManager {
     if (this.trackSessionGauges) {
       const metrics = this.sessionTracker.getMetrics();
       record('ai.session.duration_ms', metrics.sessionDurationMs, { ...teamAttrs });
+      if (this.engagedTimeTracker) {
+        record('ai.session.engaged_ms', this.engagedTimeTracker.getMetrics().engagedMs, {
+          ...teamAttrs,
+        });
+      }
       record('ai.session.unique_files_read', metrics.uniqueFilesRead, { ...teamAttrs });
       record('ai.session.unique_files_written', metrics.uniqueFilesWritten, { ...teamAttrs });
     }

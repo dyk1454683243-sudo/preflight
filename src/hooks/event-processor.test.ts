@@ -2319,6 +2319,89 @@ describe('HookEventProcessor', () => {
     });
   });
 
+  describe('mode: session_end', () => {
+    it('routes mode:session_end entries through onSessionEnd with reason', () => {
+      const frames: import('./event-processor.js').SessionEndFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onSessionEnd: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'session_end',
+          tool: 'session_end',
+          reason: 'clear',
+          timestamp: 1700000000000,
+          sessionId: 's1',
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].reason).toBe('clear');
+      expect(frames[0].sessionId).toBe('s1');
+      expect(frames[0].timestamp).toBe(1700000000000);
+    });
+
+    it('defaults sessionId to null when absent', () => {
+      const frames: import('./event-processor.js').SessionEndFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onSessionEnd: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'session_end',
+          tool: 'session_end',
+          timestamp: 1700000000000,
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].sessionId).toBeNull();
+      expect(frames[0].reason).toBeUndefined();
+    });
+
+    it('swallows errors from a throwing onSessionEnd callback', () => {
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onSessionEnd: () => {
+          throw new Error('boom');
+        },
+      });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'session_end',
+            tool: 'session_end',
+            timestamp: 1700000000000,
+            sessionId: 's1',
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+    });
+
+    it('is a no-op when onSessionEnd is not configured', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'session_end',
+            tool: 'session_end',
+            timestamp: 1700000000000,
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+      expect(records).toHaveLength(0);
+    });
+  });
+
   describe('platform tool-name mapping', () => {
     it('maps a non-canonical tool name using the injected platform adapter', () => {
       const fakeAdapter = {

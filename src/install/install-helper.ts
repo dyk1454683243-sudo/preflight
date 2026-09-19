@@ -50,12 +50,14 @@ const HOOK_SUBCOMMANDS = {
  */
 export const HOOK_SUBCOMMAND_PATTERN = Object.values(HOOK_SUBCOMMANDS).join('|');
 
-// InstructionsLoaded, PostModelSwitch, SessionStart, UserPromptSubmit, and
-// Stop are deliberately kept out of HOOK_SUBCOMMANDS/HOOK_EVENT_TYPES (see
-// the areHooksInstalled comment below) but still need to be recognized here.
+// InstructionsLoaded, PostModelSwitch, SessionStart, SessionEnd,
+// UserPromptSubmit, and Stop are deliberately kept out of
+// HOOK_SUBCOMMANDS/HOOK_EVENT_TYPES (see the areHooksInstalled comment
+// below) but still need to be recognized here.
 const INSTRUCTIONS_LOADED_SUBCOMMAND = 'instructions-loaded';
 const MODEL_SWITCH_SUBCOMMAND = 'model-switch';
 const SESSION_START_SUBCOMMAND = 'session-start';
+const SESSION_END_SUBCOMMAND = 'session-end';
 const USER_PROMPT_SUBMIT_SUBCOMMAND = 'user-prompt-submit';
 const STOP_SUBCOMMAND = 'stop';
 
@@ -69,8 +71,9 @@ const STOP_SUBCOMMAND = 'stop';
 //   preflight-collector session-start
 //   preflight-collector user-prompt-submit
 //   preflight-collector stop
+//   preflight-collector session-end
 export const NR_HOOK_RE = new RegExp(
-  `preflight-collector"?\\s+(?:${HOOK_SUBCOMMAND_PATTERN}|${INSTRUCTIONS_LOADED_SUBCOMMAND}|${MODEL_SWITCH_SUBCOMMAND}|${SESSION_START_SUBCOMMAND}|${USER_PROMPT_SUBMIT_SUBCOMMAND}|${STOP_SUBCOMMAND})`,
+  `preflight-collector"?\\s+(?:${HOOK_SUBCOMMAND_PATTERN}|${INSTRUCTIONS_LOADED_SUBCOMMAND}|${MODEL_SWITCH_SUBCOMMAND}|${SESSION_START_SUBCOMMAND}|${SESSION_END_SUBCOMMAND}|${USER_PROMPT_SUBMIT_SUBCOMMAND}|${STOP_SUBCOMMAND})`,
 );
 
 // ---------------------------------------------------------------------------
@@ -87,13 +90,14 @@ export interface HookEntry {
   hooks: HookCommand[];
 }
 
-// InstructionsLoaded, PostModelSwitch, SessionStart, UserPromptSubmit, and
-// Stop are appended separately rather than folded into HookEventType — see
-// the areHooksInstalled comment below.
+// InstructionsLoaded, PostModelSwitch, SessionStart, SessionEnd,
+// UserPromptSubmit, and Stop are appended separately rather than folded
+// into HookEventType — see the areHooksInstalled comment below.
 export type HookEntries = Record<HookEventType, HookEntry[]> & {
   InstructionsLoaded: HookEntry[];
   PostModelSwitch: HookEntry[];
   SessionStart: HookEntry[];
+  SessionEnd: HookEntry[];
   UserPromptSubmit: HookEntry[];
   Stop: HookEntry[];
 };
@@ -218,6 +222,20 @@ export function generateHookEntries(
         ],
       },
     ],
+    // SessionEnd fires when a session terminates (clear/resume/logout/
+    // prompt_input_exit/other). Closes an open engaged-time span; the
+    // collector is observational only (SessionEnd cannot block exit).
+    SessionEnd: [
+      {
+        matcher: HOOK_MATCHER,
+        hooks: [
+          {
+            type: 'command',
+            command: `${collectorInvocation} ${SESSION_END_SUBCOMMAND}`,
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -337,10 +355,10 @@ function filterNrObserveEntries(entries: unknown[]): unknown[] {
  * Pure — no file I/O.
  *
  * Deliberately does NOT check StopFailure, InstructionsLoaded,
- * PostModelSwitch, SessionStart, UserPromptSubmit, or Stop: broadening what
- * counts as "hooks installed" would change behavior for existing users,
- * which is a scope cut for this PR, not an oversight — don't "fix" this
- * without re-reading why.
+ * PostModelSwitch, SessionStart, SessionEnd, UserPromptSubmit, or Stop:
+ * broadening what counts as "hooks installed" would change behavior for
+ * existing users, which is a scope cut for this PR, not an oversight —
+ * don't "fix" this without re-reading why.
  */
 export function areHooksInstalled(settingsContent: Record<string, unknown>): boolean {
   const hooks = settingsContent.hooks;
@@ -383,6 +401,7 @@ const HooksFieldSchema = z
     InstructionsLoaded: z.array(z.unknown()).optional(),
     PostModelSwitch: z.array(z.unknown()).optional(),
     SessionStart: z.array(z.unknown()).optional(),
+    SessionEnd: z.array(z.unknown()).optional(),
     UserPromptSubmit: z.array(z.unknown()).optional(),
     Stop: z.array(z.unknown()).optional(),
   })
@@ -428,6 +447,7 @@ export function mergeSettings(
     'InstructionsLoaded',
     'PostModelSwitch',
     'SessionStart',
+    'SessionEnd',
     'UserPromptSubmit',
     'Stop',
   ] as const) {
@@ -518,6 +538,7 @@ export function removeSettings(existing: Record<string, unknown>): Record<string
       'InstructionsLoaded',
       'PostModelSwitch',
       'SessionStart',
+      'SessionEnd',
       'UserPromptSubmit',
       'Stop',
     ] as const) {

@@ -51,6 +51,7 @@ import type { ToolSelectionScorer } from '../metrics/tool-selection-scorer.js';
 import type { QualityProxyTracker } from '../metrics/quality-proxy-tracker.js';
 import type { ApiFailureTracker } from '../metrics/api-failure-tracker.js';
 import type { SessionResumeTracker } from '../metrics/session-resume-tracker.js';
+import type { EngagedTimeTracker } from '../metrics/engaged-time-tracker.js';
 import type { TurnCostAttributor } from '../metrics/turn-cost-attributor.js';
 import type { TurnTracker } from '../metrics/turn-tracker.js';
 import type { GitActivityRecord } from '../metrics/git-activity-recorder.js';
@@ -77,7 +78,7 @@ import {
 const SESSION_STATS_TOOL = {
   name: 'nr_observe_get_session_stats',
   description:
-    'Get current session observability metrics: tool call counts, success rates, file access stats, and duration summaries.',
+    'Get current session observability metrics: tool call counts, success rates, file access stats, wall-clock duration, and approximated engaged time.',
   inputSchema: {
     type: 'object' as const,
     properties: {},
@@ -159,7 +160,11 @@ const INSTALL_HOOKS_TOOL = {
 // Handlers
 // ---------------------------------------------------------------------------
 
-export function handleGetSessionStats(sessionTracker: SessionTracker, sessionTraceId?: string) {
+export function handleGetSessionStats(
+  sessionTracker: SessionTracker,
+  sessionTraceId?: string,
+  engagedTimeTracker?: EngagedTimeTracker,
+) {
   const metrics = sessionTracker.getMetrics();
 
   // Compute average tool duration across all tools
@@ -183,6 +188,14 @@ export function handleGetSessionStats(sessionTracker: SessionTracker, sessionTra
     // capture. Redact again (idempotent) before it leaves the process.
     session_intent: metrics.sessionIntent ? redactSensitive(metrics.sessionIntent) : null,
     session_duration_ms: metrics.sessionDurationMs,
+    /**
+     * Approximated engaged time (prompt→Stop ∪ tool bursts, idle-gap capped).
+     * Distinct from wall-clock `session_duration_ms`. Omitted when the
+     * accumulator is not wired (tests / proxy).
+     */
+    ...(engagedTimeTracker
+      ? { session_engaged_ms: engagedTimeTracker.getMetrics().engagedMs }
+      : {}),
     tool_calls: metrics.toolCallCount,
     tool_calls_by_type: metrics.toolCallCountByTool,
     success_rate: metrics.toolSuccessRate,
@@ -442,6 +455,7 @@ export interface ToolRegistrationOptions {
   qualityProxyTracker?: QualityProxyTracker;
   apiFailureTracker?: ApiFailureTracker;
   sessionResumeTracker?: SessionResumeTracker;
+  engagedTimeTracker?: EngagedTimeTracker;
   turnCostAttributor?: TurnCostAttributor;
   turnTracker?: TurnTracker;
   gitEfficiencyTracker?: GitEfficiencyTracker;
@@ -515,7 +529,11 @@ function registerCoreTools(deps: ToolRegistrationOptions): RegisteredToolSet {
       handle: () => {
         const check = requireTracker(deps.sessionTracker, 'SessionTracker');
         if (!check.ok) return check.result;
-        const { _stats: stats } = handleGetSessionStats(check.value, deps.sessionTraceId);
+        const { _stats: stats } = handleGetSessionStats(
+          check.value,
+          deps.sessionTraceId,
+          deps.engagedTimeTracker,
+        );
         return {
           content: [
             {

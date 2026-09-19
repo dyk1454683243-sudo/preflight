@@ -64,3 +64,5 @@ export type {
 export { RecommendationEngine } from './recommendation-engine.js';
 export type { Recommendation } from './recommendation-engine.js';
 export { LiveSessionRegistry } from './live-session-registry.js';
+export { EngagedTimeTracker, DEFAULT_ENGAGED_IDLE_GAP_MS } from './engaged-time-tracker.js';
+export type { EngagedTimeMetrics } from './engaged-time-tracker.js';

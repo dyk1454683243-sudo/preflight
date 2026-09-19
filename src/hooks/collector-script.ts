@@ -429,6 +429,11 @@ interface HookInput {
   // skill identifier (the same class as tool_input.skill on Skill calls);
   // no other prompt content is read.
   prompt?: string;
+  // SessionEnd (code.claude.com/docs/en/hooks.md): why the session ended.
+  // Closed matcher enum (`clear` / `resume` / `logout` / `prompt_input_exit`
+  // / `other`). Not free text. `bypass_permissions_disabled` was removed in
+  // Claude Code v2.1.234 and is not sent.
+  reason?: string;
   // Cursor (https://cursor.com/docs/agent/hooks) sends a different field
   // vocabulary per hook type instead of the uniform tool_name/tool_input
   // Claude Code and Kiro use. conversation_id is Cursor's closest analog to
@@ -1253,6 +1258,16 @@ function processHook(raw: string): void {
     event = {
       mode: 'stop' as const,
       timestamp,
+    };
+  } else if (eventName === 'sessionend') {
+    // Fires when a session terminates (code.claude.com/docs/en/hooks.md).
+    // Pure notification — no decision control (SessionEnd cannot block
+    // termination). `reason` is a closed matcher enum, not free text, so
+    // it is not gated behind recordContent.
+    event = {
+      mode: 'session_end' as const,
+      timestamp,
+      ...(typeof data.reason === 'string' && { reason: data.reason }),
     };
   } else {
     // Unknown hook event — ignore silently

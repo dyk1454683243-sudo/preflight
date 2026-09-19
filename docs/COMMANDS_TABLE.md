@@ -123,6 +123,7 @@ Current session metrics snapshot.
   "session_id": "string",
   "session_name": "my-project",
   "session_duration_ms": 0,
+  "session_engaged_ms": 0,
   "tool_calls": 0,
   "tool_calls_by_type": { "Read": 5, "Edit": 3 },
   "success_rate": 0.95,
@@ -135,7 +136,7 @@ Current session metrics snapshot.
 }
 ```
 
-**Data source:** `SessionTracker`
+**Data source:** `SessionTracker` (and `EngagedTimeTracker` for `session_engaged_ms`)
 
 **How each field is determined:**
 
@@ -143,6 +144,8 @@ Current session metrics snapshot.
 - `identity.teamId` / `identity.projectId` — team and project identifiers from config. `null` when not configured. `projectId` is auto-derived from the git remote URL when unset.
 - `session_trace_id` — UUID generated at server startup via `randomUUID()`; threaded through every NR event, metric, and log entry emitted in this session. Use `WHERE session_id = '<value>'` in NRQL to query all telemetry for a single session. `null` if the server was started without trace ID support.
 - `session_name` — display name derived from the working directory path at session start (e.g. the repo folder name). `null` if not available.
+- `session_duration_ms` — wall clock from MCP-process construction (`Date.now() - sessionStartTime`). A session left open overnight counts every hour.
+- `session_engaged_ms` — approximated engagement from `EngagedTimeTracker`: `UserPromptSubmit`→`Stop` spans unioned with tool-call bursts, idle gaps longer than 30s excluded. **Not** Claude Code's "actively typing/reading" / OTel `active_time.total` — hooks cannot see keystroke or focus. Omitted when the accumulator is not wired.
 - `tool_calls` — running count incremented on each `recordToolCall()`
 - `tool_calls_by_type` — per-tool-name counter map
 - `success_rate` — `successCount / totalCount`

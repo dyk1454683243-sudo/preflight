@@ -12,6 +12,7 @@ import {
 } from './session-store.js';
 import type { FullSessionSummary } from './session-store.js';
 import type { SessionTracker } from '../metrics/session-tracker.js';
+import { EngagedTimeTracker } from '../metrics/engaged-time-tracker.js';
 import { CostTracker } from '../metrics/cost-tracker.js';
 import type { CostMetrics } from '../metrics/cost-tracker.js';
 import type { TaskDetector } from '../metrics/task-detector.js';
@@ -1445,6 +1446,46 @@ describe('buildSessionSummary', () => {
     });
 
     expect(summary.sessionIntent).toBeNull();
+  });
+
+  it('buildSessionSummary persists engagedMs from EngagedTimeTracker beside wall-clock durationMs', () => {
+    const sessionTracker = makeSessionTracker();
+    const engagedTimeTracker = new EngagedTimeTracker();
+    engagedTimeTracker.recordPromptSubmit(0);
+    engagedTimeTracker.recordStop(4_000);
+
+    const summary = buildSessionSummary({
+      sessionTracker,
+      engagedTimeTracker,
+      developer: 'dev1',
+    });
+    expect(summary.engagedMs).toBe(4_000);
+    expect(summary.durationMs).toBeGreaterThanOrEqual(0);
+    expect(summary.durationMs).not.toBe(summary.engagedMs);
+  });
+
+  it('deserializeFullSessionSummary round-trips engagedMs and omits it when missing', () => {
+    const original = makeSummary({ engagedMs: 12_500 });
+    const roundTripped = deserializeFullSessionSummary(
+      JSON.parse(JSON.stringify(original)) as Parameters<typeof deserializeFullSessionSummary>[0],
+    );
+    expect(roundTripped.engagedMs).toBe(12_500);
+
+    const raw = JSON.parse(JSON.stringify(original)) as Record<string, unknown>;
+    delete raw.engagedMs;
+    expect(deserializeFullSessionSummary(raw).engagedMs).toBeUndefined();
+  });
+
+  it('mergeSummaries takes the max engagedMs and leaves it absent when neither side has it', () => {
+    const existing = makeSummary({ engagedMs: 8_000 });
+    const incoming = makeSummary({ engagedMs: 12_000 });
+    expect(mergeSummaries(existing, incoming).engagedMs).toBe(12_000);
+
+    const legacyA = makeSummary();
+    delete (legacyA as { engagedMs?: number }).engagedMs;
+    const legacyB = makeSummary();
+    delete (legacyB as { engagedMs?: number }).engagedMs;
+    expect(mergeSummaries(legacyA, legacyB).engagedMs).toBeUndefined();
   });
 
   it('deserializeFullSessionSummary round-trips sessionIntent and defaults it to null when missing', () => {
