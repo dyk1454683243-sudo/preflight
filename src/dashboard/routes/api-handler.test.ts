@@ -4097,6 +4097,200 @@ describe('api-handler GET /api/sessions/today/aggregate', () => {
     expect(parsed.sessionStatus.sessionIds.ready_for_review).toEqual(['pr-session-1']);
   });
 
+  it('clears ready_for_review when a PR created in session A is merged in session B', async () => {
+    const now = Date.now();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const startMs = startOfDay.getTime();
+
+    const handler = createApiHandler({
+      localStore: { peekAllBuffers: () => [] },
+      sessionStore: {
+        loadTodaySessions: () => [
+          {
+            sessionId: 'session-a',
+            timeline: [
+              {
+                timestamp: startMs + 10_000,
+                durationMs: 500,
+                toolName: 'Bash',
+                success: true,
+                command: 'gh pr create --fill',
+                prNumber: '42',
+              },
+            ],
+          },
+          {
+            sessionId: 'session-b',
+            timeline: [
+              {
+                timestamp: startMs + 20_000,
+                durationMs: 200,
+                toolName: 'Bash',
+                success: true,
+                command: 'gh pr merge 42',
+              },
+            ],
+          },
+        ],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+    });
+    const req = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as SessionStatusPayload;
+    expect(parsed.sessionStatus.sessionIds.ready_for_review).toEqual([]);
+    expect(parsed.sessionStatus.counts.ready_for_review).toBe(0);
+    expect(parsed.sessionStatus.sessionIds.completed).toEqual(
+      expect.arrayContaining(['session-a', 'session-b']),
+    );
+  });
+
+  it('clears ready_for_review when the same session merges its own PR', async () => {
+    const now = Date.now();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const startMs = startOfDay.getTime();
+
+    const handler = createApiHandler({
+      localStore: { peekAllBuffers: () => [] },
+      sessionStore: {
+        loadTodaySessions: () => [
+          {
+            sessionId: 'same-session',
+            timeline: [
+              {
+                timestamp: startMs + 10_000,
+                durationMs: 500,
+                toolName: 'Bash',
+                success: true,
+                command: 'gh pr create --fill',
+                prNumber: '7',
+              },
+              {
+                timestamp: startMs + 20_000,
+                durationMs: 200,
+                toolName: 'Bash',
+                success: true,
+                command: 'gh pr merge 7',
+              },
+            ],
+          },
+        ],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+    });
+    const req = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as SessionStatusPayload;
+    expect(parsed.sessionStatus.counts.ready_for_review).toBe(0);
+    expect(parsed.sessionStatus.sessionIds.completed).toEqual(['same-session']);
+  });
+
+  it('keeps ready_for_review when the create has a null prNumber (conservative)', async () => {
+    const now = Date.now();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const startMs = startOfDay.getTime();
+
+    const handler = createApiHandler({
+      localStore: { peekAllBuffers: () => [] },
+      sessionStore: {
+        loadTodaySessions: () => [
+          {
+            sessionId: 'unknown-create',
+            timeline: [
+              {
+                timestamp: startMs + 10_000,
+                durationMs: 500,
+                toolName: 'Bash',
+                success: true,
+                command: 'gh pr create --fill',
+              },
+            ],
+          },
+          {
+            sessionId: 'later-merge',
+            timeline: [
+              {
+                timestamp: startMs + 20_000,
+                durationMs: 200,
+                toolName: 'Bash',
+                success: true,
+                command: 'gh pr merge 42',
+              },
+            ],
+          },
+        ],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+    });
+    const req = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as SessionStatusPayload;
+    // Expected: without a number we cannot prove the create merged, so it
+    // stays ready_for_review even though some other PR merged today.
+    expect(parsed.sessionStatus.sessionIds.ready_for_review).toEqual(['unknown-create']);
+  });
+
+  it('does not clear ready_for_review when the merge is outside the today window', async () => {
+    const now = Date.now();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const startMs = startOfDay.getTime();
+
+    const handler = createApiHandler({
+      localStore: { peekAllBuffers: () => [] },
+      sessionStore: {
+        loadTodaySessions: () => [
+          {
+            sessionId: 'created-today',
+            timeline: [
+              {
+                timestamp: startMs + 10_000,
+                durationMs: 500,
+                toolName: 'Bash',
+                success: true,
+                command: 'gh pr create --fill',
+                prNumber: '7',
+              },
+            ],
+          },
+          {
+            sessionId: 'merged-yesterday',
+            timeline: [
+              {
+                timestamp: startMs - 60_000,
+                durationMs: 200,
+                toolName: 'Bash',
+                success: true,
+                command: 'gh pr merge 7',
+              },
+            ],
+          },
+        ],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+    });
+    const req = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as SessionStatusPayload;
+    // Limitation: a merge on another day is outside the today window.
+    expect(parsed.sessionStatus.sessionIds.ready_for_review).toEqual(['created-today']);
+  });
+
   it('marks a live session with ordinary tool calls as working', async () => {
     const now = Date.now();
     const startOfDay = new Date(now);

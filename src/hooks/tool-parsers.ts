@@ -9,6 +9,7 @@
  * parsing error is caught and returns {}.
  */
 
+import { parsePrNumberFromToolResponse } from '../lib/pr-number.js';
 import { classifyBash } from './bash-classifier.js';
 
 type ToolFields = Record<string, string | number | boolean>;
@@ -265,6 +266,11 @@ export function parseToolSpecificFields(
     const outputParser = OUTPUT_PARSERS[normalizedName];
     if (outputParser && output !== null && output !== undefined && typeof output === 'object') {
       Object.assign(fields, outputParser(output as Record<string, unknown>));
+    }
+
+    if (fields.prNumber === undefined) {
+      const prNumber = parsePrNumberFromToolResponse(output);
+      if (prNumber !== null) fields.prNumber = prNumber;
     }
 
     return fields;

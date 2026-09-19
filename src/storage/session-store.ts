@@ -1050,6 +1050,8 @@ export function buildSessionSummary(sources: BuildSessionSummarySources): FullSe
     errorType: tc.errorType || undefined,
     skillName: tc.toolName === 'Skill' && tc.skillName ? tc.skillName : undefined,
     agentType: tc.toolName === 'Agent' && tc.agentType ? tc.agentType : undefined,
+    prNumber:
+      typeof tc.prNumber === 'string' && /^\d+$/.test(tc.prNumber) ? tc.prNumber : undefined,
   }));
 
   const now = Date.now();
@@ -1583,6 +1585,8 @@ export function deserializeFullSessionSummary(
             errorType: typeof e.errorType === 'string' ? e.errorType : undefined,
             skillName: typeof e.skillName === 'string' ? e.skillName : undefined,
             agentType: typeof e.agentType === 'string' ? e.agentType : undefined,
+            prNumber:
+              typeof e.prNumber === 'string' && /^\d+$/.test(e.prNumber) ? e.prNumber : undefined,
           }))
       : undefined,
     toolSelectionMetrics,

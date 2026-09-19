@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+  countOpenPrCreates,
   deriveSessionStatus,
   SESSION_STATUSES,
   SESSION_STATUS_LABEL,
@@ -69,5 +70,28 @@ describe('SESSION_STATUS_LABEL', () => {
       expect(typeof SESSION_STATUS_LABEL[status]).toBe('string');
       expect(SESSION_STATUS_LABEL[status].length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('countOpenPrCreates', () => {
+  it('clears a create when its number is in the window-wide merged set', () => {
+    expect(countOpenPrCreates([{ prNumber: '42' }], new Set(['42']))).toBe(0);
+  });
+
+  it('counts a create as open when its number is absent from the merged set', () => {
+    expect(countOpenPrCreates([{ prNumber: '42' }], new Set(['99']))).toBe(1);
+  });
+
+  it('counts a null prNumber as open even when other PRs merged (conservative)', () => {
+    // Expected: unknown creates stay ready_for_review. A later merge cannot
+    // be matched without a number, in the same session or any other.
+    expect(countOpenPrCreates([{ prNumber: null }], new Set(['42']))).toBe(1);
+  });
+
+  it('documents that a merge outside the today window does not clear a create', () => {
+    // computeSessionStatusAggregate only puts today's merge records into
+    // the set. A next-day merge is not present, so the create stays open
+    // until the session ages out of the window.
+    expect(countOpenPrCreates([{ prNumber: '7' }], new Set())).toBe(1);
   });
 });

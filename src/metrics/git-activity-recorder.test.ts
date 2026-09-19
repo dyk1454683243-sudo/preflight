@@ -248,7 +248,25 @@ describe('GitActivityRecorder', () => {
         kind: 'pr',
       });
       expect(results[0].kind === 'pr' && results[0].prEvent.action).toBe('create');
+      // No tool response: number stays unknown. Conservative — still open.
       expect(results[0].kind === 'pr' && results[0].prEvent.prNumber).toBeNull();
+    });
+
+    it('parses prNumber from an MCP create_pull_request html_url', () => {
+      recorder.recordToolCall(
+        makeRecord({
+          toolName: 'create_pull_request',
+          cwd: repoDir,
+          toolOutput: {
+            number: 99,
+            html_url: 'https://github.com/org/repo/pull/99',
+          },
+        }),
+      );
+
+      const results = store.query({ since: 0, until: Date.now() + 1000 });
+      expect(results).toHaveLength(1);
+      expect(results[0].kind === 'pr' && results[0].prEvent.prNumber).toBe('99');
     });
 
     it('records MCP update_pull_request tool call as PR activity', () => {
@@ -291,6 +309,38 @@ describe('GitActivityRecorder', () => {
         kind: 'pr',
       });
       expect(results[0].kind === 'pr' && results[0].prEvent.action).toBe('create');
+      expect(results[0].kind === 'pr' && results[0].prEvent.prNumber).toBeNull();
+    });
+
+    it('parses prNumber from a gh pr create tool-response URL', () => {
+      recorder.recordToolCall(
+        makeRecord({
+          command: 'gh pr create --fill',
+          cwd: repoDir,
+          toolOutput: {
+            exitCode: 0,
+            stdout: 'https://github.com/newrelic-experimental/preflight/pull/773\n',
+          },
+        }),
+      );
+
+      const results = store.query({ since: 0, until: Date.now() + 1000 });
+      expect(results).toHaveLength(1);
+      expect(results[0].kind === 'pr' && results[0].prEvent.action).toBe('create');
+      expect(results[0].kind === 'pr' && results[0].prEvent.prNumber).toBe('773');
+    });
+
+    it('prefers a CLI number over a tool-response URL', () => {
+      recorder.recordToolCall(
+        makeRecord({
+          command: 'gh pr merge 456',
+          cwd: repoDir,
+          toolOutput: { stdout: 'https://github.com/org/repo/pull/999' },
+        }),
+      );
+
+      const results = store.query({ since: 0, until: Date.now() + 1000 });
+      expect(results[0].kind === 'pr' && results[0].prEvent.prNumber).toBe('456');
     });
 
     it('records gh pr merge command as PR activity', () => {

@@ -1282,6 +1282,18 @@ describe('GitEfficiencyTracker', () => {
       expect(metrics.prMetrics.created).toBe(1);
     });
 
+    it('stores prNumber from a gh pr create tool-response URL', () => {
+      tracker.recordToolCall(
+        makeRecord({
+          command: 'gh pr create --fill',
+          toolOutput: { stdout: 'https://github.com/org/repo/pull/21' },
+        }),
+      );
+
+      const created = tracker.getMetrics().prMetrics.prActivity.find((e) => e.action === 'create');
+      expect(created?.prNumber).toBe('21');
+    });
+
     it('counts an update_pull_request MCP tool call as prsUpdated', () => {
       tracker.recordToolCall(makeRecord({ toolName: 'update_pull_request', command: undefined }));
 
