@@ -1653,3 +1653,17 @@ describe('NrIngestManager tier wiring', () => {
     expect(tierWirings).toHaveLength(constructionSites.length);
   });
 });
+
+describe('agent-id correlation maps', () => {
+  it('constructs both process-lifetime maps as BoundedLruMap with idle TTL', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/index.ts'), 'utf-8');
+
+    const constructions = source.match(/new BoundedLruMap<string>\(\{/g) ?? [];
+    expect(constructions).toHaveLength(2);
+    expect(source).toContain('DEFAULT_TOOL_USE_ID_MAP_MAX_SIZE');
+    expect(source).toContain('DEFAULT_AGENT_TYPE_MAP_MAX_SIZE');
+    expect(source).toContain('DEFAULT_AGENT_ID_MAP_TTL_MS');
+    expect(source).toMatch(/toolUseIdToAgentId\.retainSessions\(keep\)/);
+    expect(source).toMatch(/agentTypeByAgentId\.retainSessions\(keep\)/);
+  });
+});

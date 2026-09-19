@@ -1,4 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
+import { BoundedLruMap } from '../lib/bounded-lru-map.js';
 import { partitionByAgent, backfillAgentId } from './agent-partition.js';
 import type { ToolCallRecord } from '../storage/types.js';
 
@@ -76,5 +77,41 @@ describe('backfillAgentId', () => {
     const result = backfillAgentId(record, map);
 
     expect(result).toBe(record);
+  });
+
+  it('backfills from a BoundedLruMap the same way as a plain Map (short-session join)', () => {
+    const record = makeRecord({ toolUseId: 'toolu_abc', agentId: undefined });
+    const map = new BoundedLruMap<string>({ maxSize: 8, ttlMs: 60_000 });
+    map.set('toolu_abc', 'a1234567890abcdef', { sessionId: 'sess-001' });
+
+    const result = backfillAgentId(record, map);
+
+    expect(result.agentId).toBe('a1234567890abcdef');
+  });
+
+  it('does not backfill a toolUseId evicted after the map fills past its bound', () => {
+    const map = new BoundedLruMap<string>({ maxSize: 2 });
+    map.set('toolu_old', 'agent_old');
+    map.set('toolu_mid', 'agent_mid');
+    map.set('toolu_new', 'agent_new');
+
+    const stale = backfillAgentId(makeRecord({ toolUseId: 'toolu_old', agentId: undefined }), map);
+    const recent = backfillAgentId(makeRecord({ toolUseId: 'toolu_new', agentId: undefined }), map);
+
+    expect(stale.agentId).toBeUndefined();
+    expect(recent.agentId).toBe('agent_new');
+  });
+
+  it('does not backfill after the owning session is pruned', () => {
+    const map = new BoundedLruMap<string>({ maxSize: 8 });
+    map.set('toolu_abc', 'agent_a', { sessionId: 'sess-a' });
+    map.set('toolu_xyz', 'agent_b', { sessionId: 'sess-b' });
+    map.pruneSession('sess-a');
+
+    const closed = backfillAgentId(makeRecord({ toolUseId: 'toolu_abc', agentId: undefined }), map);
+    const open = backfillAgentId(makeRecord({ toolUseId: 'toolu_xyz', agentId: undefined }), map);
+
+    expect(closed.agentId).toBeUndefined();
+    expect(open.agentId).toBe('agent_b');
   });
 });

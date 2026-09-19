@@ -40,6 +40,12 @@ import { SubagentWatcher } from './hooks/subagent-watcher.js';
 import { WorkflowWatcher } from './hooks/workflow-watcher.js';
 import { migrateStoragePath } from './install/migrate.js';
 import { checkNodeVersion } from './install/node-version-check.js';
+import {
+  BoundedLruMap,
+  DEFAULT_AGENT_ID_MAP_TTL_MS,
+  DEFAULT_AGENT_TYPE_MAP_MAX_SIZE,
+  DEFAULT_TOOL_USE_ID_MAP_MAX_SIZE,
+} from './lib/bounded-lru-map.js';
 import { localDateKey, todayPortionOfSessionCost } from './lib/date.js';
 import { backfillAgentId } from './metrics/agent-partition.js';
 import { AntiPatternDetector } from './metrics/anti-patterns.js';
@@ -2045,11 +2051,23 @@ async function main(): Promise<void> {
     // one record that carries both signals. Best effort: a subagent whose
     // spawning Agent call was never paired by the hook processor has no entry
     // here, so its cost is still counted but not broken out by type.
-    const agentTypeByAgentId = new Map<string, string>();
+    // Same LRU + idle-TTL bound as toolUseIdToAgentId: one spawn per entry
+    // would otherwise accumulate for the --local process lifetime.
+    const agentTypeByAgentId = new BoundedLruMap<string>({
+      maxSize: DEFAULT_AGENT_TYPE_MAP_MAX_SIZE,
+      ttlMs: DEFAULT_AGENT_ID_MAP_TTL_MS,
+    });
     // toolUseId -> agentId, built from SubagentWatcher's tool_use extraction
     // (see agent-partition.ts's backfillAgentId doc comment for why this join
     // exists instead of trusting the hook envelope's own agent_id field).
-    const toolUseIdToAgentId = new Map<string, string>();
+    // Bounded + idle-TTL: a long-running --local daemon observes every
+    // session's subagent turns and must not retain one entry per tool-use
+    // for process lifetime. get() refreshes LRU/TTL so in-flight backfill
+    // still resolves.
+    const toolUseIdToAgentId = new BoundedLruMap<string>({
+      maxSize: DEFAULT_TOOL_USE_ID_MAP_MAX_SIZE,
+      ttlMs: DEFAULT_AGENT_ID_MAP_TTL_MS,
+    });
     eventProcessor = new HookEventProcessor({
       store: localStore,
       // --local mode and the provisional --stdio window own no specific Claude
@@ -2085,7 +2103,11 @@ async function main(): Promise<void> {
           const subagentType =
             typeof rawRecord.subagentType === 'string' ? rawRecord.subagentType : undefined;
           if (spawnedAgentId && subagentType) {
-            agentTypeByAgentId.set(spawnedAgentId, subagentType);
+            agentTypeByAgentId.set(spawnedAgentId, subagentType, {
+              ...(typeof rawRecord.sessionId === 'string'
+                ? { sessionId: rawRecord.sessionId }
+                : {}),
+            });
           }
         }
 
@@ -2142,6 +2164,16 @@ async function main(): Promise<void> {
         const gitDayKey = localDateKey();
         if (gitDayKey !== gitEfficiencyDayKey) {
           gitEfficiencyDayKey = gitDayKey;
+          // Session-end prune for the --local daemon: once the live registry
+          // has rolled yesterday's ids off "seen today", their tool-use and
+          // agent-type correlations have no further join use. LRU + TTL are
+          // the hard process-lifetime bounds; this just drops a closed day's
+          // entries earlier.
+          const keep = new Set(liveSessionRegistry!.getTodaySessionIds({ includeSynthetic: true }));
+          toolUseIdToAgentId.retainSessions(keep);
+          agentTypeByAgentId.retainSessions(keep);
+          toolUseIdToAgentId.pruneExpired();
+          agentTypeByAgentId.pruneExpired();
           gitEfficiencyTracker.reset(sessionTraceId);
           if (capturedRepoContext) gitEfficiencyTracker.hydrateRepoContext(capturedRepoContext);
           if (capturedBranchDivergence) {
@@ -2419,7 +2451,9 @@ async function main(): Promise<void> {
       onSubagentTurn: (turn) => {
         if (!costTracker || !config) return;
         for (const toolUseId of turn.toolUseIds) {
-          toolUseIdToAgentId.set(toolUseId, turn.agentId);
+          toolUseIdToAgentId.set(toolUseId, turn.agentId, {
+            sessionId: turn.parentSessionId,
+          });
         }
         // Best-effort — see agentTypeByAgentId's doc comment above.
         const agentType = agentTypeByAgentId.get(turn.agentId);
