@@ -1187,6 +1187,7 @@ interface SerializedFullSessionSummary {
   readonly startTime?: unknown;
   readonly endTime?: unknown;
   readonly durationMs?: unknown;
+  readonly engagedMs?: unknown;
   readonly toolCallCount?: unknown;
   readonly developer?: unknown;
   readonly model?: unknown;

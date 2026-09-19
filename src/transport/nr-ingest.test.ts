@@ -955,14 +955,15 @@ describe('NrIngestManager', () => {
       manager.start();
       await manager.stop();
 
-      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<
-        Record<string, unknown>
-      >;
+      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<{
+        name: string;
+        value: { sum: number };
+      }>;
       const metricNames = sentMetrics.map((m) => m.name);
       expect(metricNames).toContain('ai.session.duration_ms');
       expect(metricNames).toContain('ai.session.engaged_ms');
       const engaged = sentMetrics.find((m) => m.name === 'ai.session.engaged_ms');
-      expect(engaged?.value).toBe(3_000);
+      expect(engaged?.value.sum).toBe(3_000);
     });
 
     it('skips ai.session.* gauges when trackSessionGauges is false (proxy mode)', async () => {
