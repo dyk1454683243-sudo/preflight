@@ -15,6 +15,79 @@ import { resolve, dirname } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 
+// src/lib/pr-number.ts
+var GH_PR_URL_RE = /(?:github\.com)\/[^/\s]+\/[^/\s]+\/pulls?\/(\d+)/i;
+var GH_REPO_HASH_RE = /\b[\w.-]+\/[\w.-]+#(\d+)\b/;
+var DIGITS_RE = /^\d+$/;
+function parsePrNumberFromText(text) {
+  const urlMatch = GH_PR_URL_RE.exec(text);
+  if (urlMatch) return urlMatch[1];
+  const hashMatch = GH_REPO_HASH_RE.exec(text);
+  if (hashMatch) return hashMatch[1];
+  return null;
+}
+function isPositiveIntString(value) {
+  return DIGITS_RE.test(value) && value !== "0" && !value.startsWith("0");
+}
+function numberFieldToPrNumber(value) {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return String(value);
+  }
+  if (typeof value === "string" && isPositiveIntString(value)) {
+    return value;
+  }
+  return null;
+}
+function looksLikePrPayload(obj) {
+  if (typeof obj.html_url === "string" && GH_PR_URL_RE.test(obj.html_url)) return true;
+  if (typeof obj.htmlUrl === "string" && GH_PR_URL_RE.test(obj.htmlUrl)) return true;
+  if (typeof obj.url === "string" && GH_PR_URL_RE.test(obj.url)) return true;
+  return false;
+}
+function parsePrNumberFromToolResponse(output) {
+  if (output === null || output === void 0) return null;
+  if (typeof output === "number") return numberFieldToPrNumber(output);
+  if (typeof output === "string") {
+    const trimmed = output.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        return parsePrNumberFromToolResponse(JSON.parse(trimmed));
+      } catch {
+      }
+    }
+    if (isPositiveIntString(trimmed)) return trimmed;
+    return parsePrNumberFromText(output);
+  }
+  if (typeof output !== "object") return null;
+  if (Array.isArray(output)) {
+    for (const entry of output) {
+      const parsed = parsePrNumberFromToolResponse(entry);
+      if (parsed) return parsed;
+    }
+    return null;
+  }
+  const obj = output;
+  const fromMeta = numberFieldToPrNumber(obj.prNumber);
+  if (fromMeta) return fromMeta;
+  if (looksLikePrPayload(obj)) {
+    const fromNumber = numberFieldToPrNumber(obj.number);
+    if (fromNumber) return fromNumber;
+  }
+  for (const key of ["html_url", "htmlUrl", "url", "stdout", "stderr", "text", "result"]) {
+    const parsed = parsePrNumberFromToolResponse(obj[key]);
+    if (parsed) return parsed;
+  }
+  if (obj.pull_request !== void 0) {
+    const nested = parsePrNumberFromToolResponse(obj.pull_request);
+    if (nested) return nested;
+  }
+  if (Array.isArray(obj.content)) {
+    const fromContent = parsePrNumberFromToolResponse(obj.content);
+    if (fromContent) return fromContent;
+  }
+  return null;
+}
+
 // src/redaction-patterns.ts
 var REDACTION_PATTERNS = [
   /(?<![a-zA-Z])(?:API_KEY|SECRET|TOKEN|PASSWORD|PASSPHRASE|PRIVATE_KEY)(?![a-zA-Z])[\s]*[=:]\s*\S+/gi,
@@ -366,16 +439,24 @@ function extractInputMeta(toolName, input) {
   return Object.keys(meta).length > 0 ? meta : void 0;
 }
 function extractOutputMeta(toolName, output) {
-  if (output === null || output === void 0 || typeof output !== "object") return void 0;
+  if (output === null || output === void 0) return void 0;
+  if (typeof output === "string") {
+    const prNumber2 = parsePrNumberFromToolResponse(output);
+    return prNumber2 !== null ? { prNumber: prNumber2 } : void 0;
+  }
+  if (typeof output !== "object") return void 0;
   const obj = output;
   if (toolName === "Bash") {
+    const meta = {};
     if (typeof obj.exitCode === "number") {
-      return { exitCode: obj.exitCode };
-    }
-    if (typeof obj.exitCode === "string") {
+      meta.exitCode = obj.exitCode;
+    } else if (typeof obj.exitCode === "string") {
       const parsed = Number(obj.exitCode);
-      if (!Number.isNaN(parsed)) return { exitCode: parsed };
+      if (!Number.isNaN(parsed)) meta.exitCode = parsed;
     }
+    const prNumber2 = parsePrNumberFromToolResponse(obj);
+    if (prNumber2 !== null) meta.prNumber = prNumber2;
+    return Object.keys(meta).length > 0 ? meta : void 0;
   }
   if (toolName === "Edit") {
     const meta = {};
@@ -418,7 +499,8 @@ function extractOutputMeta(toolName, output) {
     if (typeof obj.agentId === "string") meta.spawnedAgentId = obj.agentId;
     return Object.keys(meta).length > 0 ? meta : void 0;
   }
-  return void 0;
+  const prNumber = parsePrNumberFromToolResponse(obj);
+  return prNumber !== null ? { prNumber } : void 0;
 }
 function getWindsurfToolInfo(data) {
   return data.tool_info !== null && typeof data.tool_info === "object" ? data.tool_info : {};
