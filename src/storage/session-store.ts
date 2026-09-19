@@ -34,6 +34,7 @@ import type {
   TokenBreakdown,
 } from './types.js';
 import type { SessionTracker } from '../metrics/session-tracker.js';
+import type { EngagedTimeTracker } from '../metrics/engaged-time-tracker.js';
 import type { CostTracker, CostMetrics } from '../metrics/cost-tracker.js';
 import type {
   TurnCostAttributor,
@@ -107,6 +108,12 @@ export interface FullSessionSummary extends SessionSummary {
    * capture time (force-disabled under highSecurity). See SessionMetrics.
    */
   readonly sessionIntent: string | null;
+  /**
+   * Approximated engaged milliseconds (prompt→Stop ∪ tool bursts, idle-gap
+   * capped). Distinct from wall-clock `durationMs`. Optional: absent on
+   * summaries written before this field existed.
+   */
+  readonly engagedMs?: number;
   readonly repoName: string | null;
   readonly model: string | null;
   readonly toolBreakdown: Record<string, number>;
@@ -521,6 +528,9 @@ export function mergeSummaries(
     startTime,
     endTime,
     durationMs: Math.max(0, endTime - startTime),
+    ...(existing.engagedMs !== undefined || incoming.engagedMs !== undefined
+      ? { engagedMs: maxNum(existing.engagedMs, incoming.engagedMs) }
+      : {}),
     toolCallCount: maxNum(existing.toolCallCount, incoming.toolCallCount),
     sessionName: incoming.sessionName ?? existing.sessionName,
     // Tie the source to whichever name won above so a name/source desync can't
@@ -850,6 +860,7 @@ export interface BuildSessionSummarySources {
   toolSelectionScorer?: ToolSelectionScorer;
   modelUsageTracker?: ModelUsageTracker;
   qualityProxyTracker?: QualityProxyTracker;
+  engagedTimeTracker?: EngagedTimeTracker;
   developer: string;
   repoName?: string | null;
   /**
@@ -1071,6 +1082,9 @@ export function buildSessionSummary(sources: BuildSessionSummarySources): FullSe
     // Recalculate durationMs from wall-clock times rather than trusting the
     // tracker's accumulated value, which can lag if polling is infrequent.
     durationMs: now - sessionMetrics.sessionStartTime,
+    ...(sources.engagedTimeTracker
+      ? { engagedMs: sources.engagedTimeTracker.getMetrics(now).engagedMs }
+      : {}),
     toolCallCount: sessionMetrics.toolCallCount,
     developer,
     model: costMetrics?.model ?? null,
@@ -1173,6 +1187,7 @@ interface SerializedFullSessionSummary {
   readonly startTime?: unknown;
   readonly endTime?: unknown;
   readonly durationMs?: unknown;
+  readonly engagedMs?: unknown;
   readonly toolCallCount?: unknown;
   readonly developer?: unknown;
   readonly model?: unknown;
@@ -1515,6 +1530,9 @@ export function deserializeFullSessionSummary(
     startTime: typeof obj.startTime === 'number' ? obj.startTime : 0,
     endTime: typeof obj.endTime === 'number' ? obj.endTime : 0,
     durationMs: typeof obj.durationMs === 'number' ? obj.durationMs : 0,
+    ...(typeof obj.engagedMs === 'number' && Number.isFinite(obj.engagedMs)
+      ? { engagedMs: obj.engagedMs }
+      : {}),
     toolCallCount: typeof obj.toolCallCount === 'number' ? obj.toolCallCount : 0,
     developer: typeof obj.developer === 'string' ? obj.developer : 'unknown',
     model: typeof obj.model === 'string' ? obj.model : null,

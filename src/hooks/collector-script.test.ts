@@ -166,6 +166,17 @@ function makeStop(overrides?: Record<string, unknown>): string {
   });
 }
 
+function makeSessionEnd(overrides?: Record<string, unknown>): string {
+  return JSON.stringify({
+    session_id: 'sess-001',
+    transcript_path: '/Users/test/.claude/projects/test/sess-001.jsonl',
+    cwd: '/projects/test',
+    hook_event_name: 'SessionEnd',
+    reason: 'other',
+    ...overrides,
+  });
+}
+
 function makeGeminiBeforeTool(overrides?: Record<string, unknown>): string {
   return JSON.stringify({
     hook_event_name: 'BeforeTool',
@@ -1147,6 +1158,35 @@ describe('collector-script', () => {
 
       const event = readBufferEvents()[0]!;
       expect(event.slashCommand).toBeUndefined();
+    });
+  });
+
+  describe('processHook() — SessionEnd', () => {
+    it('writes a session_end event with reason and session metadata', () => {
+      processHook(makeSessionEnd());
+
+      const events = readBufferEvents();
+      expect(events).toHaveLength(1);
+
+      const event = events[0]!;
+      expect(event.mode).toBe('session_end');
+      expect(event.reason).toBe('other');
+      expect(event.sessionId).toBe('sess-001');
+    });
+
+    it('omits reason when absent', () => {
+      processHook(makeSessionEnd({ reason: undefined }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.mode).toBe('session_end');
+      expect(event.reason).toBeUndefined();
+    });
+
+    it('does not gate reason on recordContent', () => {
+      processHook(makeSessionEnd({ reason: 'clear' }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.reason).toBe('clear');
     });
   });
 

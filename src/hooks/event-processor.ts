@@ -34,6 +34,7 @@ import type {
   ModelSwitchHookEvent,
   UserPromptSubmitHookEvent,
   StopHookEvent,
+  SessionEndHookEvent,
   ToolCallRecord,
   TokenEvent,
   SubagentTokenEvent,
@@ -98,6 +99,8 @@ export interface HookEventProcessorOptions {
   onUserPromptSubmit?: (event: BoundaryFrame) => void;
   /** Fires for every `mode: 'stop'` line; errors swallowed. */
   onStop?: (event: BoundaryFrame) => void;
+  /** Fires for every `mode: 'session_end'` line; errors swallowed. */
+  onSessionEnd?: (event: SessionEndFrame) => void;
   /**
    * Adapter used to map each platform's raw tool names (e.g. Kiro's `fs_read`)
    * to Preflight's canonical vocabulary (`Read`) before pairing/emitting.
@@ -206,6 +209,13 @@ export interface BoundaryFrame {
   readonly timestamp: number;
   readonly sessionId: string | null;
   readonly slashCommand?: string;
+}
+
+/** Wire-shape data extracted from a `mode: 'session_end'` entry. */
+export interface SessionEndFrame {
+  readonly timestamp: number;
+  readonly sessionId: string | null;
+  readonly reason?: string;
 }
 
 function numAttr(v: unknown): number {
@@ -338,6 +348,7 @@ export class HookEventProcessor {
   private readonly onModelSwitch: ((event: ModelSwitchFrame) => void) | null;
   private readonly onUserPromptSubmit: ((event: BoundaryFrame) => void) | null;
   private readonly onStop: ((event: BoundaryFrame) => void) | null;
+  private readonly onSessionEnd: ((event: SessionEndFrame) => void) | null;
   private readonly platformAdapter: PlatformAdapter;
   /**
    * Set from a non-generic `platform` value carried on a pre/post event (see
@@ -419,6 +430,7 @@ export class HookEventProcessor {
     this.onModelSwitch = options.onModelSwitch ?? null;
     this.onUserPromptSubmit = options.onUserPromptSubmit ?? null;
     this.onStop = options.onStop ?? null;
+    this.onSessionEnd = options.onSessionEnd ?? null;
     this.platformAdapter = options.platformAdapter ?? createDefaultRegistry().getActive();
 
     this.boundBeforeExit = () => {
@@ -613,6 +625,8 @@ export class HookEventProcessor {
           this.handleBoundaryEvent(event, this.onUserPromptSubmit, 'onUserPromptSubmit');
         } else if (event.mode === 'stop') {
           this.handleBoundaryEvent(event, this.onStop, 'onStop');
+        } else if (event.mode === 'session_end') {
+          this.handleSessionEndEvent(event);
         }
       } catch (err) {
         logger.warn('Error processing hook event', {
@@ -1123,6 +1137,25 @@ export class HookEventProcessor {
       this.onModelSwitch(frame);
     } catch (err) {
       logger.warn('onModelSwitch callback failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private handleSessionEndEvent(event: SessionEndHookEvent): void {
+    if (!this.onSessionEnd) return;
+    const frame: SessionEndFrame = {
+      timestamp:
+        typeof event.timestamp === 'number' && Number.isFinite(event.timestamp)
+          ? event.timestamp
+          : Date.now(),
+      sessionId: event.sessionId ?? null,
+      ...(typeof event.reason === 'string' ? { reason: event.reason } : {}),
+    };
+    try {
+      this.onSessionEnd(frame);
+    } catch (err) {
+      logger.warn('onSessionEnd callback failed', {
         error: err instanceof Error ? err.message : String(err),
       });
     }

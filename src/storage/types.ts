@@ -242,6 +242,19 @@ export interface StopHookEvent extends HookEventBase {
 }
 
 /**
+ * Emitted by Claude Code's SessionEnd hook when a session terminates
+ * (code.claude.com/docs/en/hooks.md). `reason` is a closed matcher enum
+ * (`clear` / `resume` / `logout` / `prompt_input_exit` / `other`) — not
+ * free text. `bypass_permissions_disabled` was removed in Claude Code
+ * v2.1.234 and is not sent. Pure notification — no decision control.
+ */
+export interface SessionEndHookEvent extends HookEventBase {
+  readonly mode: 'session_end';
+  readonly sessionId?: string;
+  readonly reason?: string;
+}
+
+/**
  * Buffer line discriminated union. `pre`/`post`/`token` are the original
  * collector modes; `permission_request`/`permission_denied` are collector
  * modes for Claude Code's permission hooks. `subagent_token`, `workflow_run`,
@@ -249,7 +262,8 @@ export interface StopHookEvent extends HookEventBase {
  * `api_failure` is emitted by the collector for Claude Code's StopFailure
  * hook, `session_start` for its SessionStart hook, `instructions_loaded` for
  * its InstructionsLoaded hook, `model_switch` for its PostModelSwitch hook,
- * `user_prompt_submit`/`stop` for its UserPromptSubmit/Stop hooks.
+ * `user_prompt_submit`/`stop` for its UserPromptSubmit/Stop hooks,
+ * `session_end` for its SessionEnd hook.
  */
 export type HookEvent =
   | PreHookEvent
@@ -265,7 +279,8 @@ export type HookEvent =
   | InstructionsLoadedHookEvent
   | ModelSwitchHookEvent
   | UserPromptSubmitHookEvent
-  | StopHookEvent;
+  | StopHookEvent
+  | SessionEndHookEvent;
 
 export interface TokenEvent {
   readonly mode: 'token';

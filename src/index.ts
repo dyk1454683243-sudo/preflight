@@ -45,6 +45,7 @@ import { backfillAgentId } from './metrics/agent-partition.js';
 import { AntiPatternDetector } from './metrics/anti-patterns.js';
 import { ApiFailureTracker, mapClaudeCodeErrorType } from './metrics/api-failure-tracker.js';
 import { SessionResumeTracker } from './metrics/session-resume-tracker.js';
+import { EngagedTimeTracker } from './metrics/engaged-time-tracker.js';
 import { BudgetTracker } from './metrics/budget-tracker.js';
 import { ClaudeMdTracker } from './metrics/claudemd-tracker.js';
 import { CollaborationProfiler } from './metrics/collaboration-profile.js';
@@ -1186,6 +1187,7 @@ async function main(): Promise<void> {
     // events that carry the resume-cost fields — a plain startup/clear/
     // compact SessionStart has nothing to report and never calls recordResume().
     const sessionResumeTracker = new SessionResumeTracker();
+    const engagedTimeTracker = new EngagedTimeTracker();
     liveSessionRegistry = new LiveSessionRegistry();
     liveSessionRegistry.startSampling();
     // Unconditional in every mode — decoupled from whether the `--local`
@@ -1359,6 +1361,9 @@ async function main(): Promise<void> {
           toolCallCount: persisted.toolCallCount,
           bashCommandCount: persisted.bashCommandCount,
         });
+        if (typeof persisted.engagedMs === 'number') {
+          engagedTimeTracker.seedFromPersisted(persisted.engagedMs);
+        }
         budgetTracker.seedFiredThresholdsFromSessionTotal(
           costTracker.getMetrics().sessionTotalCostUsd ?? 0,
         );
@@ -1978,6 +1983,7 @@ async function main(): Promise<void> {
         apiFailureTracker,
         gitEfficiencyTracker,
         turnCostAttributor,
+        engagedTimeTracker,
         sessionTraceId,
       });
       capturedNrIngest = nrIngest;
@@ -2069,6 +2075,7 @@ async function main(): Promise<void> {
           config.otlp.transport !== 'nr-events-api' ? taskDetector.getActiveTaskId() : null;
 
         sessionTracker.recordToolCall(rawRecord);
+        engagedTimeTracker.recordToolCall(rawRecord);
         taskDetector.recordToolCall(rawRecord);
         localSessionAggregator.recordToolCall(rawRecord);
         if (rawRecord.sessionId) {
@@ -2532,10 +2539,14 @@ async function main(): Promise<void> {
         });
       },
       onSessionStart: (frame) => {
+        // SessionStart itself is not engagement (an overnight-open
+        // window must stay 0). The call is still required so the hook
+        // is not a silent no-op at the tracker layer.
+        engagedTimeTracker.recordSessionStart(frame.timestamp);
         // Only 'resume'/'fork' SessionStart events with the resume-cost
-        // fields present are actionable — a plain startup/clear/compact
-        // start (or a resume with no prior response, per the docs) has
-        // nothing to report.
+        // fields present are actionable for SessionResumeTracker — a
+        // plain startup/clear/compact start (or a resume with no prior
+        // response, per the docs) has nothing to report.
         if (
           typeof frame.secondsSinceLastResponse !== 'number' ||
           typeof frame.contextTokens !== 'number' ||
@@ -2567,10 +2578,15 @@ async function main(): Promise<void> {
       onUserPromptSubmit: (frame) => {
         turnCostAttributor.recordSlashCommand(frame.sessionId, frame.slashCommand ?? null);
         taskDetector!.startTaskIfNone(frame.timestamp);
+        engagedTimeTracker.recordPromptSubmit(frame.timestamp);
       },
       onStop: (frame) => {
         turnTracker.finalizeTurnAt(frame.timestamp);
         taskDetector!.markBoundary(frame.timestamp);
+        engagedTimeTracker.recordStop(frame.timestamp);
+      },
+      onSessionEnd: (frame) => {
+        engagedTimeTracker.recordSessionEnd(frame.timestamp);
       },
     });
 
@@ -2598,6 +2614,7 @@ async function main(): Promise<void> {
           modelUsageTracker,
           qualityProxyTracker,
           transcriptMessageTracker,
+          engagedTimeTracker,
           developer: config.developer ?? 'unknown',
           repoName: currentRepoName,
           // A periodic checkpoint is a live, in-progress session — persisting it
@@ -2996,6 +3013,7 @@ async function main(): Promise<void> {
           apiFailureTracker,
           gitEfficiencyTracker,
           turnCostAttributor,
+          engagedTimeTracker,
           sessionTraceId: realId,
         });
         capturedNrIngest = nrIngest;
@@ -3053,6 +3071,7 @@ async function main(): Promise<void> {
         qualityProxyTracker,
         apiFailureTracker,
         sessionResumeTracker,
+        engagedTimeTracker,
         turnCostAttributor,
         turnTracker,
         gitEfficiencyTracker,
@@ -3272,6 +3291,7 @@ async function main(): Promise<void> {
           qualityProxyTracker,
           apiFailureTracker,
           sessionResumeTracker,
+          engagedTimeTracker,
           turnCostAttributor,
           turnTracker,
           gitEfficiencyTracker,

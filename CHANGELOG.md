@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Approximated session engaged time (`ai.session.engaged_ms` / `session_engaged_ms`) beside wall-clock `ai.session.duration_ms`. Claude Code `SessionEnd` is now collected (with `UserPromptSubmit` / `SessionStart` / `Stop`, which were already wired) and fed to a gap-coalescing accumulator: prompt→Stop spans unioned with tool-call bursts, idle gaps longer than 30s excluded. This is not Claude Code's OTel `active_time.total` — hooks cannot see keystrokes or focus.
+
 ## [1.57.0] - 2026-09-17
 
 ### Added

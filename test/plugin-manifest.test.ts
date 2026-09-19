@@ -23,7 +23,14 @@ const mcpConfig: {
 } = JSON.parse(readFileSync(resolve(repoRoot, 'plugin/.mcp.json'), 'utf-8'));
 
 const hooksConfig: {
-  hooks: { PreToolUse: unknown[]; PostToolUse: unknown[] };
+  hooks: {
+    PreToolUse: unknown[];
+    PostToolUse: unknown[];
+    SessionStart: unknown[];
+    SessionEnd: unknown[];
+    UserPromptSubmit: unknown[];
+    Stop: unknown[];
+  };
 } = JSON.parse(readFileSync(resolve(repoRoot, 'plugin/hooks/hooks.json'), 'utf-8'));
 
 const kiroPluginManifest: { version: string } = JSON.parse(
@@ -55,9 +62,13 @@ describe('Claude Code plugin manifests', () => {
     expect(server.args).toEqual(['-y', '@newrelic/preflight@latest', '--stdio']);
   });
 
-  it('hooks.json wires both PreToolUse and PostToolUse to the bundled collector', () => {
+  it('hooks.json wires tool and lifecycle hooks to the bundled collector', () => {
     expect(hooksConfig.hooks.PreToolUse.length).toBeGreaterThan(0);
     expect(hooksConfig.hooks.PostToolUse.length).toBeGreaterThan(0);
+    expect(hooksConfig.hooks.SessionStart.length).toBeGreaterThan(0);
+    expect(hooksConfig.hooks.SessionEnd.length).toBeGreaterThan(0);
+    expect(hooksConfig.hooks.UserPromptSubmit.length).toBeGreaterThan(0);
+    expect(hooksConfig.hooks.Stop.length).toBeGreaterThan(0);
   });
 
   it('the bundled hook collector script exists and is committed', () => {

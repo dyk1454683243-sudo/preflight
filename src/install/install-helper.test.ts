@@ -366,6 +366,33 @@ describe('generateHookEntries', () => {
       'wsl.exe -e "/home/user/bin/preflight-collector" stop',
     );
   });
+
+  it('generates a SessionEnd entry alongside SessionStart/UserPromptSubmit/Stop', () => {
+    const hooks = generateHookEntries('/usr/local/bin/preflight');
+
+    expect(hooks.SessionEnd).toEqual([
+      {
+        matcher: '',
+        hooks: [{ type: 'command', command: '"/usr/local/bin/preflight-collector" session-end' }],
+      },
+    ]);
+  });
+
+  it('generates a bare-name SessionEnd command when no binPath provided', () => {
+    const hooks = generateHookEntries();
+
+    expect(hooks.SessionEnd).toEqual([
+      { matcher: '', hooks: [{ type: 'command', command: 'preflight-collector session-end' }] },
+    ]);
+  });
+
+  it('wsl mode: generates a quoted wsl.exe SessionEnd command', () => {
+    const hooks = generateHookEntries('/home/user/bin/preflight', { platform: 'wsl-windows-cc' });
+
+    expect(hooks.SessionEnd[0].hooks[0].command).toBe(
+      'wsl.exe -e "/home/user/bin/preflight-collector" session-end',
+    );
+  });
 });
 
 describe('mergeSettings — wsl-windows-cc platform', () => {
@@ -637,6 +664,37 @@ describe('mergeSettings', () => {
 
     const hooks = twice.hooks as Record<string, unknown[]>;
     expect(hooks.SessionStart).toHaveLength(1);
+  });
+
+  it('preserves an existing foreign SessionEnd entry and appends ours', () => {
+    const existing = {
+      hooks: {
+        SessionEnd: [
+          { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --on-end' }] },
+        ],
+      },
+    };
+
+    const result = mergeSettings(existing);
+
+    const hooks = result.hooks as Record<string, unknown[]>;
+    expect(hooks.SessionEnd).toHaveLength(2);
+    const foreignEntry = hooks.SessionEnd[0] as Record<string, unknown>;
+    expect((foreignEntry.hooks as Array<Record<string, string>>)[0].command).toBe(
+      'some-other-tool --on-end',
+    );
+    const ourEntry = hooks.SessionEnd[1] as Record<string, unknown>;
+    expect((ourEntry.hooks as Array<Record<string, string>>)[0].command).toBe(
+      'preflight-collector session-end',
+    );
+  });
+
+  it('is idempotent for SessionEnd — running twice does not duplicate entries', () => {
+    const once = mergeSettings({});
+    const twice = mergeSettings(once);
+
+    const hooks = twice.hooks as Record<string, unknown[]>;
+    expect(hooks.SessionEnd).toHaveLength(1);
   });
 
   it('preserves an existing foreign StopFailure entry and appends ours', () => {
@@ -996,6 +1054,27 @@ describe('removeSettings', () => {
     const hooks = result.hooks as Record<string, unknown[]>;
     expect(hooks.PostModelSwitch).toEqual([
       { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --on-switch' }] },
+    ]);
+  });
+
+  it('removes only preflight SessionEnd entries, keeps a foreign one', () => {
+    const settings = {
+      hooks: {
+        SessionEnd: [
+          { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --on-end' }] },
+          {
+            matcher: '',
+            hooks: [{ type: 'command', command: 'preflight-collector session-end' }],
+          },
+        ],
+      },
+    };
+
+    const result = removeSettings(settings);
+
+    const hooks = result.hooks as Record<string, unknown[]>;
+    expect(hooks.SessionEnd).toEqual([
+      { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --on-end' }] },
     ]);
   });
 
