@@ -35,6 +35,11 @@ export function partitionByAgent<T extends { readonly agentId?: string }>(
   return [...groups.values()];
 }
 
+/** Lookup used to join a hook-envelope toolUseId to a transcript-derived agentId. */
+export type ToolUseIdToAgentIdLookup = {
+  readonly get: (toolUseId: string) => string | undefined;
+};
+
 /**
  * Fills in `ToolCallRecord.agentId` from a `toolUseId → agentId` map when the
  * record's own `agentId` is absent — Claude Code's hook envelope documents
@@ -48,7 +53,7 @@ export function partitionByAgent<T extends { readonly agentId?: string }>(
  */
 export function backfillAgentId(
   record: ToolCallRecord,
-  toolUseIdToAgentId: ReadonlyMap<string, string>,
+  toolUseIdToAgentId: ToolUseIdToAgentIdLookup,
 ): ToolCallRecord {
   if (record.agentId !== undefined) return record;
   if (typeof record.toolUseId !== 'string') return record;
