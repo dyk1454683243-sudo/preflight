@@ -10,7 +10,10 @@ export interface SessionStatusInput {
   readonly live: boolean;
   /** The session's most recent tool call, across buffer and persisted timeline. Null when neither has one. */
   readonly lastToolName: string | null;
-  /** PR 'create' events with no later 'merge' of the same prNumber (a null prNumber always counts as open). */
+  /**
+   * PR 'create' events whose number is unknown or absent from the window's
+   * merged-PR set. A null prNumber always counts as open (conservative).
+   */
   readonly openPrCount: number;
 }
 
@@ -48,4 +51,26 @@ export function deriveSessionStatus(input: SessionStatusInput): SessionStatus {
   }
   // Unreachable: the last entry's predicate is unconditionally true.
   return 'completed';
+}
+
+/**
+ * Count creates that are still open against a window-wide set of merged
+ * PR numbers (every session, not just the creating one).
+ *
+ * A create with `prNumber: null` stays open — we cannot prove it merged.
+ * A merge that happened on a later day is outside the today window and is
+ * not in `mergedPrNumbers`, so that create also stays open until the
+ * session ages out of the window.
+ */
+export function countOpenPrCreates(
+  creates: readonly { readonly prNumber: string | null }[],
+  mergedPrNumbers: ReadonlySet<string>,
+): number {
+  let open = 0;
+  for (const event of creates) {
+    if (event.prNumber === null || !mergedPrNumbers.has(event.prNumber)) {
+      open++;
+    }
+  }
+  return open;
 }

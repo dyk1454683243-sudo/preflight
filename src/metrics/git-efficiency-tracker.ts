@@ -4,6 +4,7 @@ import { stripHeredocBodies } from './local-session-aggregator.js';
 import {
   classifyGitSegments,
   processGhCommand,
+  resolvePrNumberFromRecord,
   splitShellSegments,
   type GitEvent,
 } from './git-event-classifier.js';
@@ -319,11 +320,14 @@ export class GitEfficiencyTracker {
     // MCP tool calls (e.g. the GitHub MCP server's create_pull_request /
     // update_pull_request) carry no `command` field, so they'd otherwise be
     // silently dropped by the guard below. See MCP_PR_TOOL_ACTION's doc
-    // comment. No confirmed PR-number field exists for these — prNumber is
-    // null, unlike the gh-CLI path below which extracts it from command text.
+    // comment. prNumber comes from the tool response when present.
     const mcpPrAction = MCP_PR_TOOL_ACTION[record.toolName];
     if (mcpPrAction) {
-      this.prEvents.push({ timestamp: record.timestamp, action: mcpPrAction, prNumber: null });
+      this.prEvents.push({
+        timestamp: record.timestamp,
+        action: mcpPrAction,
+        prNumber: resolvePrNumberFromRecord(record, null),
+      });
     }
 
     const rawCommand = record.command as string | undefined;
@@ -343,7 +347,10 @@ export class GitEfficiencyTracker {
       // A failed `gh pr create` made no PR — see git-activity-recorder.ts's
       // matching gate for the full rationale.
       if (prEvent.action === 'create' && record.success === false) continue;
-      this.prEvents.push(prEvent);
+      this.prEvents.push({
+        ...prEvent,
+        prNumber: resolvePrNumberFromRecord(record, prEvent.prNumber),
+      });
     }
 
     const resolveRepo = (dir: string | null): string | null => this.repoResolver.resolve(dir);
@@ -495,6 +502,7 @@ export class GitEfficiencyTracker {
         errorType: entry.errorType,
         isTestCommand: entry.isTestCommand,
         isBuildCommand: entry.isBuildCommand,
+        prNumber: entry.prNumber,
       };
       this.recordToolCall(syntheticRecord);
     }

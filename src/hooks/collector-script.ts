@@ -26,6 +26,7 @@ import {
 import { resolve, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
+import { parsePrNumberFromToolResponse } from '../lib/pr-number.js';
 import { REDACTION_PATTERNS } from '../redaction-patterns.js';
 import { resolveRecordContent } from '../record-content-gate.js';
 import { CLAUDE_CODE_ENV_SIGNALS } from '../platforms/claude-code-adapter.js';
@@ -621,17 +622,25 @@ function extractInputMeta(toolName: string, input: unknown): Record<string, unkn
  * parsers need.
  */
 function extractOutputMeta(toolName: string, output: unknown): Record<string, unknown> | undefined {
-  if (output === null || output === undefined || typeof output !== 'object') return undefined;
+  if (output === null || output === undefined) return undefined;
+  if (typeof output === 'string') {
+    const prNumber = parsePrNumberFromToolResponse(output);
+    return prNumber !== null ? { prNumber } : undefined;
+  }
+  if (typeof output !== 'object') return undefined;
   const obj = output as Record<string, unknown>;
 
   if (toolName === 'Bash') {
+    const meta: Record<string, unknown> = {};
     if (typeof obj.exitCode === 'number') {
-      return { exitCode: obj.exitCode };
-    }
-    if (typeof obj.exitCode === 'string') {
+      meta.exitCode = obj.exitCode;
+    } else if (typeof obj.exitCode === 'string') {
       const parsed = Number(obj.exitCode);
-      if (!Number.isNaN(parsed)) return { exitCode: parsed };
+      if (!Number.isNaN(parsed)) meta.exitCode = parsed;
     }
+    const prNumber = parsePrNumberFromToolResponse(obj);
+    if (prNumber !== null) meta.prNumber = prNumber;
+    return Object.keys(meta).length > 0 ? meta : undefined;
   }
 
   if (toolName === 'Edit') {
@@ -678,7 +687,10 @@ function extractOutputMeta(toolName: string, output: unknown): Record<string, un
     return Object.keys(meta).length > 0 ? meta : undefined;
   }
 
-  return undefined;
+  // MCP PR tools (create_pull_request, etc.) carry number/html_url — store
+  // only the parsed number, never the rest of the payload.
+  const prNumber = parsePrNumberFromToolResponse(obj);
+  return prNumber !== null ? { prNumber } : undefined;
 }
 
 /**

@@ -4,6 +4,7 @@ import { ActivityStore } from './git-activity-store.js';
 import {
   classifyGitSegments,
   processGhCommand,
+  resolvePrNumberFromRecord,
   splitShellSegments,
   type GitEvent,
 } from './git-event-classifier.js';
@@ -101,7 +102,11 @@ export class GitActivityRecorder {
       this.ingestActivity({
         sessionId: record.sessionId ?? 'unknown',
         kind: 'pr',
-        prEvent: { timestamp: record.timestamp, action: mcpPrAction, prNumber: null },
+        prEvent: {
+          timestamp: record.timestamp,
+          action: mcpPrAction,
+          prNumber: resolvePrNumberFromRecord(record, null),
+        },
         timestamp: record.timestamp,
         recordId: this.makeRecordId(record, 'pr-mcp'),
         workspaceKey: this.resolveWorkspaceKey(cwd),
@@ -128,7 +133,10 @@ export class GitActivityRecorder {
       this.ingestActivity({
         sessionId: record.sessionId ?? 'unknown',
         kind: 'pr',
-        prEvent,
+        prEvent: {
+          ...prEvent,
+          prNumber: resolvePrNumberFromRecord(record, prEvent.prNumber),
+        },
         timestamp: record.timestamp,
         // Indexed so a compound command chaining two `gh pr` calls (rare,
         // but possible) doesn't collide on the same recordId.

@@ -407,6 +407,24 @@ describe('parseToolSpecificFields', () => {
       const fields = parseToolSpecificFields('Bash', { command: 'ls' }, null);
       expect(fields.exitCode).toBeUndefined();
     });
+
+    it('parses prNumber from a create URL in stdout', () => {
+      const fields = parseToolSpecificFields(
+        'Bash',
+        { command: 'gh pr create --fill' },
+        { exitCode: 0, stdout: 'https://github.com/org/repo/pull/44' },
+      );
+      expect(fields.prNumber).toBe('44');
+    });
+
+    it('parses prNumber from an MCP create_pull_request body', () => {
+      const fields = parseToolSpecificFields(
+        'create_pull_request',
+        { title: 'x' },
+        { number: 8, html_url: 'https://github.com/org/repo/pull/8' },
+      );
+      expect(fields.prNumber).toBe('8');
+    });
   });
 
   describe('Edit output parser', () => {

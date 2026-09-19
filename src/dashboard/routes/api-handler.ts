@@ -55,6 +55,7 @@ import {
 import type { Recommendation } from '../../metrics/recommendation-engine.js';
 import type { RetryDetectorMetrics, RetrySessionBreakdown } from '../../metrics/retry-detector.js';
 import {
+  countOpenPrCreates,
   deriveSessionStatus,
   SESSION_STATUSES,
   type SessionStatus,
@@ -1127,6 +1128,8 @@ function toolCallToTimelineEntry(tc: ToolCallRecord): ReplayTimelineEntry {
     isLintCommand: (tc.isLintCommand as boolean | undefined) || undefined,
     errorType: tc.errorType || undefined,
     agentId: tc.agentId || undefined,
+    prNumber:
+      typeof tc.prNumber === 'string' && /^\d+$/.test(tc.prNumber) ? tc.prNumber : undefined,
   };
 }
 
@@ -1301,26 +1304,16 @@ function isPrRecord(
   return record.kind === 'pr';
 }
 
-// A 'create' with a null prNumber can never be matched by a later 'merge'
-// (gh/MCP always resolve a real number once one exists), so it always counts
-// as open. `records` must be sorted ascending by timestamp.
-function countOpenPrs(records: readonly Extract<GitActivityRecord, { kind: 'pr' }>[]): number {
-  let open = 0;
-  for (let i = 0; i < records.length; i++) {
-    const event = records[i].prEvent;
-    if (event.action !== 'create') continue;
-    if (event.prNumber === null) {
-      open++;
-      continue;
+function collectMergedPrNumbers(
+  records: readonly Extract<GitActivityRecord, { kind: 'pr' }>[],
+): Set<string> {
+  const merged = new Set<string>();
+  for (const record of records) {
+    if (record.prEvent.action === 'merge' && record.prEvent.prNumber !== null) {
+      merged.add(record.prEvent.prNumber);
     }
-    const merged = records
-      .slice(i + 1)
-      .some(
-        (later) => later.prEvent.action === 'merge' && later.prEvent.prNumber === event.prNumber,
-      );
-    if (!merged) open++;
   }
-  return open;
+  return merged;
 }
 
 interface SessionStatusAggregateInput {
@@ -1377,13 +1370,19 @@ function computeSessionStatusAggregate(input: SessionStatusAggregateInput): {
     const replayed = input.replayCache.replay(session, identityResolver);
     for (const record of replayed.records) activityStore.ingest(record);
   }
+  // One window-wide merged set so a merge in session B clears a create in
+  // session A. Querying since startMs means a next-day merge is not in this
+  // set and will not clear today's create until the session ages out.
+  const prRecordsInWindow: Array<Extract<GitActivityRecord, { kind: 'pr' }>> = [];
   const prRecordsBySession = new Map<string, Array<Extract<GitActivityRecord, { kind: 'pr' }>>>();
   for (const record of activityStore.query({ since: startMs, until: now })) {
     if (!isPrRecord(record)) continue;
+    prRecordsInWindow.push(record);
     const list = prRecordsBySession.get(record.sessionId);
     if (list) list.push(record);
     else prRecordsBySession.set(record.sessionId, [record]);
   }
+  const mergedPrNumbers = collectMergedPrNumbers(prRecordsInWindow);
 
   const counts = Object.fromEntries(SESSION_STATUSES.map((s) => [s, 0])) as Record<
     SessionStatus,
@@ -1393,10 +1392,13 @@ function computeSessionStatusAggregate(input: SessionStatusAggregateInput): {
     SESSION_STATUSES.map((s) => [s, [] as string[]]),
   ) as Record<SessionStatus, string[]>;
   for (const sessionId of sessionIds) {
+    const creates = (prRecordsBySession.get(sessionId) ?? [])
+      .filter((record) => record.prEvent.action === 'create')
+      .map((record) => record.prEvent);
     const status = deriveSessionStatus({
       live: liveSet.has(sessionId),
       lastToolName: lastToolBySession.get(sessionId)?.toolName ?? null,
-      openPrCount: countOpenPrs(prRecordsBySession.get(sessionId) ?? []),
+      openPrCount: countOpenPrCreates(creates, mergedPrNumbers),
     });
     counts[status]++;
     idsByStatus[status].push(sessionId);

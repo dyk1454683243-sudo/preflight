@@ -396,6 +396,32 @@ describe('collector-script', () => {
       expect(event.toolOutput).toEqual({ exitCode: 0 });
     });
 
+    it('extracts prNumber from a gh pr create URL in Bash stdout', () => {
+      const response = {
+        exitCode: 0,
+        stdout: 'https://github.com/newrelic-experimental/preflight/pull/773\n',
+      };
+      processHook(makePostToolUse({ tool_name: 'Bash', tool_response: response }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.toolOutput).toEqual({ exitCode: 0, prNumber: '773' });
+    });
+
+    it('extracts prNumber from an MCP create_pull_request response', () => {
+      processHook(
+        makePostToolUse({
+          tool_name: 'create_pull_request',
+          tool_response: {
+            number: 15,
+            html_url: 'https://github.com/org/repo/pull/15',
+          },
+        }),
+      );
+
+      const event = readBufferEvents()[0]!;
+      expect(event.toolOutput).toEqual({ prNumber: '15' });
+    });
+
     it('omits toolOutput when no parseable output fields exist', () => {
       const response = { filePath: '/tmp/out.ts', success: true };
       processHook(makePostToolUse({ tool_response: response }));

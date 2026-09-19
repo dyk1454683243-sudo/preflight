@@ -365,6 +365,12 @@ export interface ReplayTimelineEntry {
   readonly skillName?: string;
   /** Only on `toolName === 'Agent'` entries, from the hook payload's `subagent_type`. */
   readonly agentType?: string;
+  /**
+   * GitHub PR number parsed from the create/merge tool response (URL or
+   * MCP html_url/number). Absent when the command had no parseable number
+   * and no tool response was available — those creates stay conservative.
+   */
+  readonly prNumber?: string;
 }
 
 /**

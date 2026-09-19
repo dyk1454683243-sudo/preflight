@@ -1,4 +1,5 @@
 import { redactSensitive } from '../config.js';
+import { parsePrNumberFromToolResponse } from '../lib/pr-number.js';
 import type { ToolCallRecord } from '../storage/types.js';
 import { gitCommandTargetDir } from './local-session-aggregator.js';
 import type { PrEvent } from './git-efficiency-tracker.js';
@@ -233,6 +234,22 @@ export function processGhCommand(command: string, timestamp: number): PrEvent | 
   const action = GH_PR_VERB_ACTION[match[1]];
   if (!action) return null;
   return { timestamp, action, prNumber: match[2] ?? null };
+}
+
+/**
+ * CLI number wins when the verb was followed by one; otherwise parse the
+ * create/merge tool response (Bash stdout URL or MCP html_url/number).
+ */
+export function resolvePrNumberFromRecord(
+  record: ToolCallRecord,
+  cliNumber: string | null,
+): string | null {
+  if (cliNumber !== null) return cliNumber;
+  return (
+    parsePrNumberFromToolResponse(record.prNumber) ??
+    parsePrNumberFromToolResponse(record.toolOutput) ??
+    parsePrNumberFromToolResponse(record.stdout)
+  );
 }
 
 export interface ClassifiedGitSegment {
