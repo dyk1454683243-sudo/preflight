@@ -130,6 +130,7 @@ const mockedPlatform = platformMod as unknown as {
 const mockedHelper = installHelperMod as unknown as {
   mergeSettings: jest.Mock;
   mergeMcpConfig: jest.Mock;
+  removeSettings: jest.Mock;
   detectSettingsPath: jest.Mock;
   detectMcpConfigPath: jest.Mock;
 };

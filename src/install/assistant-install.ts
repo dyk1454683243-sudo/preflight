@@ -876,10 +876,14 @@ function writeMerged(
 }
 
 function listAgentFiles(dir: string): string[] {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((name) => name.endsWith('.json'))
-    .map((name) => join(dir, name));
+  try {
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => join(dir, name));
+  } catch {
+    return [];
+  }
 }
 
 export function applyFileAssistantInstall(
